@@ -12,8 +12,19 @@ import { AnimatePresence, motion } from 'framer-motion';
 const RegisterModal = React.lazy(() => import('./components/RegisterModal'));
 const PasswordModal = React.lazy(() => import('./components/PasswordModal'));
 const ProjectDetailModal = React.lazy(() => import('./components/ProjectDetailModal'));
+const EntryGate = React.lazy(() => import('./components/EntryGate'));
 
 function App() {
+  // Auth State
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    return sessionStorage.getItem('ktb_gallery_auth') === 'true';
+  });
+
+  const handleLogin = () => {
+    setIsAuthenticated(true);
+    sessionStorage.setItem('ktb_gallery_auth', 'true');
+  };
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
   const [editingProject, setEditingProject] = useState(null);
@@ -132,6 +143,14 @@ function App() {
         return dateB - dateA;
       });
   }, [projects, selectedGeneration, sortBy]);
+
+  if (!isAuthenticated) {
+    return (
+      <Suspense fallback={null}>
+        <EntryGate onLogin={handleLogin} />
+      </Suspense>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 font-sans transition-colors duration-200 flex flex-col">

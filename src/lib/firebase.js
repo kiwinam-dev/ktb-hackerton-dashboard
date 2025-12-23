@@ -345,6 +345,32 @@ export const syncCommentCounts = async () => {
 	}
 };
 
+
+// System Settings (Entry Password)
+export const verifySystemPassword = async (inputPassword) => {
+	try {
+		const docRef = doc(db, "settings", "system");
+		const docSnap = await getDoc(docRef);
+		const inputHash = await hashPassword(inputPassword);
+
+		if (!docSnap.exists()) {
+			// Initialize with default password "1234" if not exists
+			const defaultHash = await hashPassword("1234");
+			await setDoc(docRef, { entryPassword: defaultHash });
+
+			// If input matches "1234", success
+			return inputPassword === "1234";
+		}
+
+		const storedHash = docSnap.data().entryPassword;
+		return storedHash === inputHash;
+	} catch (error) {
+		console.error("System password check error:", error);
+		// Fail open or closed? Closed for security.
+		return false;
+	}
+};
+
 // --- Deployments (Release Notes) ---
 
 export const subscribeToDeployments = (projectId, callback, limitCount = 5) => {
