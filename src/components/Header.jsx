@@ -10,7 +10,7 @@ const Header = ({ onRegister, theme, toggleTheme, selectedGeneration, onSelectGe
 						KTB 프로젝트 갤러리
 					</h1>
 					<div className="flex items-center bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
-						{[1, 2, 3].map((gen) => (
+						{[1, 2, 3, 4].map((gen) => (
 							<button
 								key={gen}
 								onClick={() => onSelectGeneration(gen)}

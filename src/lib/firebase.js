@@ -2,12 +2,13 @@ import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
-	apiKey: "AIzaSyDvN5qlgbSVh0vcxAC1e2omE3kCAYh_PaE",
-	authDomain: "ktb-hackerton.firebaseapp.com",
-	projectId: "ktb-hackerton",
-	storageBucket: "ktb-hackerton.firebasestorage.app",
-	messagingSenderId: "839971246632",
-	appId: "1:839971246632:web:936044809239ead4ed5b1d"
+	apiKey: "AIzaSyCm0Bul1xpqu6SejQyEJKlvRtarWSc7Jv0",
+	authDomain: "ktb-project-dashboard.firebaseapp.com",
+	projectId: "ktb-project-dashboard",
+	storageBucket: "ktb-project-dashboard.firebasestorage.app",
+	messagingSenderId: "223321006077",
+	appId: "1:223321006077:web:afbf57c9a724f8f818c394",
+	measurementId: "G-CZBSB4PET4"
 };
 
 // Initialize Firebase
