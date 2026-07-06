@@ -14,7 +14,6 @@ import {
 	verifyStudentVoter, 
 	submitVote, 
 	getVoterVotes, 
-	getVotesByGeneration,
 	db
 } from '../lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
@@ -72,8 +71,6 @@ const VotingView = ({ projects, onProjectClick, showToast, generations = [] }) =
 	const [skippedPairs, setSkippedPairs] = useState(new Set());
 
 	// Ranking State
-	const [votesList, setVotesList] = useState([]);
-	const [rankingLoading, setRankingLoading] = useState(false);
 	const [rankingGen, setRankingGen] = useState(4);
 
 	// Admin Edit State
@@ -112,12 +109,7 @@ const VotingView = ({ projects, onProjectClick, showToast, generations = [] }) =
 		}
 	}, [voter, settings.generation]);
 
-	// 3. Fetch Votes List for Ranking Board
-	useEffect(() => {
-		if (activeTab === 'ranking') {
-			loadAllVotesForRanking();
-		}
-	}, [activeTab, rankingGen]);
+
 
 	const loadVoterVotes = async () => {
 		if (!voter) return;
@@ -133,17 +125,6 @@ const VotingView = ({ projects, onProjectClick, showToast, generations = [] }) =
 		}
 	};
 
-	const loadAllVotesForRanking = async () => {
-		setRankingLoading(true);
-		try {
-			const votes = await getVotesByGeneration(rankingGen);
-			setVotesList(votes);
-		} catch (error) {
-			console.error("Failed to load votes for ranking:", error);
-		} finally {
-			setRankingLoading(false);
-		}
-	};
 
 	// --- Voter Auth Handlers ---
 	const handleStudentAuthSubmit = async (e) => {
@@ -194,70 +175,14 @@ const VotingView = ({ projects, onProjectClick, showToast, generations = [] }) =
 	// --- ELO Ranking Board Calculation ---
 	const eloRankings = useMemo(() => {
 		const genProjects = projects.filter(p => (p.generation || 3) === rankingGen);
-		
-		const ratings = {};
-		const stats = {};
-		
-		genProjects.forEach(p => {
-			ratings[p.id] = INITIAL_ELO;
-			stats[p.id] = { wins: 0, losses: 0, total: 0 };
-		});
-
-		const sortedVotes = [...votesList].sort((a, b) => {
-			const tA = a.timestamp?.seconds || 0;
-			const tB = b.timestamp?.seconds || 0;
-			return tA - tB;
-		});
-
-		sortedVotes.forEach(vote => {
-			const { projectA, projectB, winner } = vote;
-			
-			if (ratings[projectA] === undefined) {
-				ratings[projectA] = INITIAL_ELO;
-				stats[projectA] = { wins: 0, losses: 0, total: 0 };
-			}
-			if (ratings[projectB] === undefined) {
-				ratings[projectB] = INITIAL_ELO;
-				stats[projectB] = { wins: 0, losses: 0, total: 0 };
-			}
-
-			const rA = ratings[projectA];
-			const rB = ratings[projectB];
-
-			const eA = 1 / (1 + Math.pow(10, (rB - rA) / 400));
-			const eB = 1 / (1 + Math.pow(10, (rA - rB) / 400));
-
-			let sA = 0.5;
-			let sB = 0.5;
-
-			if (winner === projectA) {
-				sA = 1;
-				sB = 0;
-				stats[projectA].wins += 1;
-				stats[projectB].losses += 1;
-			} else if (winner === projectB) {
-				sA = 0;
-				sB = 1;
-				stats[projectB].wins += 1;
-				stats[projectA].losses += 1;
-			}
-
-			stats[projectA].total += 1;
-			stats[projectB].total += 1;
-
-			ratings[projectA] = Math.round(rA + K_FACTOR * (sA - eA));
-			ratings[projectB] = Math.round(rB + K_FACTOR * (sB - eB));
-		});
-
 		return genProjects.map(p => ({
 			...p,
-			elo: ratings[p.id] || INITIAL_ELO,
-			wins: stats[p.id]?.wins || 0,
-			losses: stats[p.id]?.losses || 0,
-			totalMatches: stats[p.id]?.total || 0
+			elo: p.elo || 1200,
+			wins: p.wins || 0,
+			losses: p.losses || 0,
+			totalMatches: p.totalMatches || 0
 		})).sort((a, b) => b.elo - a.elo);
-
-	}, [projects, votesList, rankingGen]);
+	}, [projects, rankingGen]);
 
 	// --- Matchup Pairing Logic ---
 	const activeGenProjects = useMemo(() => {
@@ -864,12 +789,7 @@ const VotingView = ({ projects, onProjectClick, showToast, generations = [] }) =
 								</div>
 
 								{/* Ranking Board Grid/List */}
-								{rankingLoading ? (
-									<div className="text-center py-20 flex flex-col items-center justify-center gap-3">
-										<RefreshCw className="w-8 h-8 animate-spin text-kakao-yellow" />
-										<p className="text-gray-500 dark:text-gray-400">전체 투표 로그를 바탕으로 ELO 랭킹 실시간 계산 중...</p>
-									</div>
-								) : eloRankings.length === 0 ? (
+								{eloRankings.length === 0 ? (
 									<div className="text-center py-20 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl">
 										<div className="text-5xl mb-4">🦁</div>
 										<h4 className="text-lg font-bold text-gray-900 dark:text-white mb-1">등록된 데이터가 없습니다</h4>
@@ -927,12 +847,19 @@ const VotingView = ({ projects, onProjectClick, showToast, generations = [] }) =
 																{/* Project Info */}
 																<td className="px-6 py-4 align-middle">
 																	<div className="flex items-center gap-3">
-																		{proj.imageUrl && (
+																		{(proj.thumbnailUrl || proj.imageUrl) && (
 																			<img 
-																				src={proj.imageUrl} 
+																				src={proj.thumbnailUrl || proj.imageUrl} 
 																				alt={proj.title} 
+																				loading="lazy"
 																				className="w-12 h-8 object-cover rounded-md border border-gray-100 dark:border-gray-700 flex-shrink-0"
-																				onError={(e) => { e.target.src = "https://via.placeholder.com/640x360?text=No+Image"; }}
+																				onError={(e) => {
+																					if (e.target.src !== proj.imageUrl && proj.imageUrl) {
+																						e.target.src = proj.imageUrl;
+																					} else {
+																						e.target.style.display = 'none';
+																					}
+																				}}
 																			/>
 																		)}
 																		<div className="min-w-0">
@@ -975,7 +902,7 @@ const VotingView = ({ projects, onProjectClick, showToast, generations = [] }) =
 											</table>
 										</div>
 										<div className="bg-gray-50/50 dark:bg-gray-700/30 px-6 py-3 border-t border-gray-100 dark:border-gray-700 text-xs text-gray-500 dark:text-gray-400">
-											* 총 투표 매치 기록 수: <strong className="text-gray-800 dark:text-gray-200">{votesList.length}건</strong> (매주 투표를 통해 무작위 경쟁에 의한 점수 누적 방식)
+											* 총 투표 매치 기록 수: <strong className="text-gray-800 dark:text-gray-200">{eloRankings.reduce((sum, p) => sum + (p.totalMatches || 0), 0)}건</strong> (매주 투표를 통해 무작위 경쟁에 의한 점수 누적 방식)
 										</div>
 									</div>
 								)}

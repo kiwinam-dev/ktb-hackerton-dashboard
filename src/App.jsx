@@ -14,6 +14,7 @@ const PasswordModal = React.lazy(() => import('./components/PasswordModal'));
 const ProjectDetailModal = React.lazy(() => import('./components/ProjectDetailModal'));
 const EntryGate = React.lazy(() => import('./components/EntryGate'));
 const VotingView = React.lazy(() => import('./components/VotingView'));
+const AdminDashboard = React.lazy(() => import('./components/AdminDashboard'));
 
 function App() {
   // Auth State
@@ -216,7 +217,7 @@ function App() {
               />
             )}
           </>
-        ) : (
+        ) : view === 'vote' ? (
           <Suspense fallback={
             <div className="text-center py-20 flex flex-col items-center justify-center gap-3">
               <div className="w-8 h-8 border-2 border-kakao-yellow border-t-transparent rounded-full animate-spin" />
@@ -228,6 +229,19 @@ function App() {
               onProjectClick={setSelectedProject}
               showToast={showToast}
               generations={generations}
+            />
+          </Suspense>
+        ) : (
+          <Suspense fallback={
+            <div className="text-center py-20 flex flex-col items-center justify-center gap-3">
+              <div className="w-8 h-8 border-2 border-kakao-yellow border-t-transparent rounded-full animate-spin" />
+              <p className="text-gray-500 dark:text-gray-400 font-semibold">관리자 대시보드 불러오는 중...</p>
+            </div>
+          }>
+            <AdminDashboard
+              projects={projects}
+              onBackToGallery={() => setView('gallery')}
+              showToast={showToast}
             />
           </Suspense>
         )}
@@ -274,7 +288,7 @@ function App() {
       {/* Scroll to Top */}
       <ScrollToTop />
 
-      <Footer />
+      <Footer onAdminClick={() => setView('admin_dashboard')} />
     </div>
   );
 }

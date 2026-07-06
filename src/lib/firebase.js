@@ -1,5 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
+import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
 const firebaseConfig = {
 	apiKey: "AIzaSyCm0Bul1xpqu6SejQyEJKlvRtarWSc7Jv0",
@@ -14,6 +15,172 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
+export const storage = getStorage(app);
+
+/**
+ * 외부 이미지 URL을 fetch → Blob URL 변환 → Canvas 리사이즈 후
+ * Firebase Storage에 WebP로 업로드하고 Download URL을 반환합니다.
+ *
+ * CORS 우회 전략:
+ * 1) 직접 fetch 시도 (CORS 허용 서버는 바로 성공)
+ * 2) 실패 시 corsproxy.io 경유 fetch (GitHub 등 CORS 미지원 서버)
+ * Blob URL은 same-origin으로 처리되므로 Canvas taint 없이 toBlob() 가능.
+ *
+ * @param {string} imageUrl  - 원본 이미지 URL
+ * @param {string} projectId - 프로젝트 ID (Storage 경로에 사용)
+ * @returns {Promise<string|null>} CDN Download URL 또는 null
+ */
+export const uploadThumbnailFromUrl = async (imageUrl, projectId) => {
+	const MAX_SIZE = 640;
+	const QUALITY  = 0.82;
+
+	/**
+	 * 이미지를 fetch해서 Blob으로 반환.
+	 * 직접 fetch 실패 시 images.weserv.nl (이미지 전용 CDN 프록시, GitHub 지원) 경유.
+	 * weserv.nl은 서버에서 최대 640px WebP 리사이즈까지 처리해주므로
+	 * 프록시 경유 시에는 Canvas 리사이즈 단계도 생략합니다.
+	 * @returns {{ blob: Blob, alreadyResized: boolean }}
+	 */
+	const fetchAsBlob = async (url) => {
+		// 1차: 직접 fetch (CORS 허용 서버)
+		try {
+			const res = await fetch(url);
+			if (res.ok) return { blob: await res.blob(), alreadyResized: false };
+		} catch (_) { /* CORS or network error → proxy fallback */ }
+
+		// 2차: images.weserv.nl - 이미지 전용 CDN 프록시 (GitHub, Twitter 등 지원)
+		// 서버 사이드 리사이즈(w=640, WebP, q=82) + CORS 헤더 자동 추가
+		try {
+			const weservUrl = `https://images.weserv.nl/?url=${encodeURIComponent(url)}&w=${MAX_SIZE}&output=webp&q=${Math.round(QUALITY * 100)}&maxage=7d`;
+			const res = await fetch(weservUrl);
+			if (res.ok) return { blob: await res.blob(), alreadyResized: true }; // 이미 리사이즈됨
+		} catch (_) { /* proxy error → next fallback */ }
+
+		// 3차: allorigins.win (범용 CORS 프록시)
+		try {
+			const alloriginsUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+			const res = await fetch(alloriginsUrl);
+			if (res.ok) return { blob: await res.blob(), alreadyResized: false };
+		} catch (_) { /* all proxies failed */ }
+
+		throw new Error('모든 프록시 시도 실패 - 원본 URL 유지');
+	};
+
+	/** Blob → Blob URL → Canvas 리사이즈 → 결과 Blob */
+	const resizeBlob = (srcBlob) => new Promise((resolve, reject) => {
+		const blobUrl = URL.createObjectURL(srcBlob);
+		const img = new Image();
+
+		img.onload = () => {
+			URL.revokeObjectURL(blobUrl); // 메모리 해제
+
+			let { naturalWidth: w, naturalHeight: h } = img;
+			if (w > MAX_SIZE || h > MAX_SIZE) {
+				if (w >= h) { h = Math.round((h * MAX_SIZE) / w); w = MAX_SIZE; }
+				else        { w = Math.round((w * MAX_SIZE) / h); h = MAX_SIZE; }
+			}
+
+			const canvas = document.createElement('canvas');
+			canvas.width  = w;
+			canvas.height = h;
+			canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+
+			// WebP 지원 여부 확인
+			const mimeType = canvas.toDataURL('image/webp').startsWith('data:image/webp')
+				? 'image/webp' : 'image/jpeg';
+
+			canvas.toBlob(
+				(b) => b ? resolve(b) : reject(new Error('Canvas toBlob failed')),
+				mimeType,
+				QUALITY
+			);
+		};
+
+		img.onerror = () => { URL.revokeObjectURL(blobUrl); reject(new Error('Image render failed')); };
+		img.src = blobUrl; // Blob URL은 same-origin → crossOrigin 불필요
+	});
+
+	try {
+		const { blob: srcBlob, alreadyResized } = await fetchAsBlob(imageUrl);
+
+		// 프록시가 이미 리사이즈한 경우(weserv.nl) Canvas 단계 생략
+		const thumbBlob = alreadyResized ? srcBlob : await resizeBlob(srcBlob);
+
+		const ext        = thumbBlob.type === 'image/webp' ? 'webp' : 'jpg';
+		const path       = `thumbnails/${projectId}/${Date.now()}.${ext}`;
+		const storageRef = ref(storage, path);
+
+		await uploadBytes(storageRef, thumbBlob, { contentType: thumbBlob.type });
+		return await getDownloadURL(storageRef);
+	} catch (error) {
+		console.warn('썸네일 업로드 실패 (원본 URL 유지):', error.message);
+		return null;
+	}
+};
+
+/**
+ * 로컬 File 객체를 받아 썸네일 사이즈(최대 640px)로 리사이즈한 뒤
+ * Firebase Storage에 WebP로 업로드하고 Download URL을 반환합니다.
+ *
+ * 로컬 파일은 Blob URL(same-origin)로 처리되므로 CORS 문제가 없습니다.
+ *
+ * @param {File}   file      - 업로드할 이미지 File 객체
+ * @param {string} projectId - 프로젝트 ID (Storage 경로에 사용)
+ * @returns {Promise<string|null>} CDN Download URL 또는 null
+ */
+export const uploadThumbnailFromFile = async (file, projectId) => {
+	const MAX_SIZE = 640;
+	const QUALITY  = 0.82;
+
+	try {
+		// File → Blob URL (same-origin, CORS 없음)
+		const blobUrl = URL.createObjectURL(file);
+
+		const thumbBlob = await new Promise((resolve, reject) => {
+			const img = new Image();
+
+			img.onload = () => {
+				URL.revokeObjectURL(blobUrl); // 즉시 해제
+
+				let { naturalWidth: w, naturalHeight: h } = img;
+				if (w > MAX_SIZE || h > MAX_SIZE) {
+					if (w >= h) { h = Math.round((h * MAX_SIZE) / w); w = MAX_SIZE; }
+					else        { w = Math.round((w * MAX_SIZE) / h); h = MAX_SIZE; }
+				}
+
+				const canvas = document.createElement('canvas');
+				canvas.width  = w;
+				canvas.height = h;
+				canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+
+				const mimeType = canvas.toDataURL('image/webp').startsWith('data:image/webp')
+					? 'image/webp' : 'image/jpeg';
+
+				canvas.toBlob(
+					(b) => b ? resolve(b) : reject(new Error('Canvas toBlob 실패')),
+					mimeType,
+					QUALITY
+				);
+			};
+
+			img.onerror = () => { URL.revokeObjectURL(blobUrl); reject(new Error('이미지 렌더링 실패')); };
+			img.src = blobUrl;
+		});
+
+		const ext        = thumbBlob.type === 'image/webp' ? 'webp' : 'jpg';
+		const path       = `thumbnails/${projectId}/${Date.now()}.${ext}`;
+		const storageRef = ref(storage, path);
+
+		await uploadBytes(storageRef, thumbBlob, { contentType: thumbBlob.type });
+		return await getDownloadURL(storageRef);
+	} catch (error) {
+		console.warn('파일 썸네일 업로드 실패:', error.message);
+		return null;
+	}
+};
+
+
+
 
 import {
 	collection,
@@ -33,7 +200,9 @@ import {
 	getDocs,
 	setDoc,
 	arrayUnion,
-	arrayRemove
+	arrayRemove,
+	runTransaction,
+	writeBatch
 } from "firebase/firestore";
 import { hashPassword } from "./crypto";
 
@@ -589,22 +758,107 @@ seedTestStudents();
 
 export const submitVote = async (voterEmail, projectA, projectB, winner, generation) => {
 	try {
-		// Pair ID (independent of presentation order)
 		const pairId = [projectA, projectB].sort().join("_");
 		const voteId = `${voterEmail}_${pairId}`;
 
 		const voteRef = doc(db, "votes", voteId);
-		await setDoc(voteRef, {
-			voterEmail,
-			projectA,
-			projectB,
-			winner,
-			generation,
-			timestamp: serverTimestamp()
+		const studentRef = doc(db, "students", voterEmail);
+		const matchRef = doc(db, "matchups", pairId);
+		const projARef = doc(db, "projects", projectA);
+		const projBRef = doc(db, "projects", projectB);
+
+		await runTransaction(db, async (transaction) => {
+			// 1. Read necessary docs
+			const [voteSnap, studentSnap, matchSnap, projASnap, projBSnap] = await Promise.all([
+				transaction.get(voteRef),
+				transaction.get(studentRef),
+				transaction.get(matchRef),
+				transaction.get(projARef),
+				transaction.get(projBRef)
+			]);
+
+			if (voteSnap.exists()) {
+				// Already voted on this pair
+				return;
+			}
+
+			// 2. Extract current values
+			const currentAScore = projASnap.exists() ? (projASnap.data().elo || 1500) : 1500;
+			const currentBScore = projBSnap.exists() ? (projBSnap.data().elo || 1500) : 1500;
+
+			const currentAWins = projASnap.exists() ? (projASnap.data().wins || 0) : 0;
+			const currentALosses = projASnap.exists() ? (projASnap.data().losses || 0) : 0;
+			const currentAMatches = projASnap.exists() ? (projASnap.data().totalMatches || 0) : 0;
+
+			const currentBWins = projBSnap.exists() ? (projBSnap.data().wins || 0) : 0;
+			const currentBLosses = projBSnap.exists() ? (projBSnap.data().losses || 0) : 0;
+			const currentBMatches = projBSnap.exists() ? (projBSnap.data().totalMatches || 0) : 0;
+
+			// 3. ELO rating change calculation
+			const K_FACTOR = 32;
+			const eA = 1 / (1 + Math.pow(10, (currentBScore - currentAScore) / 400));
+			const eB = 1 / (1 + Math.pow(10, (currentAScore - currentBScore) / 400));
+
+			const sA = winner === projectA ? 1 : 0;
+			const sB = winner === projectB ? 1 : 0;
+
+			const newAScore = Math.round(currentAScore + K_FACTOR * (sA - eA));
+			const newBScore = Math.round(currentBScore + K_FACTOR * (sB - eB));
+
+			// 4. Update Matchup
+			let matchData = {
+				projectA,
+				projectB,
+				generation,
+				winsA: 0,
+				winsB: 0,
+				total: 0
+			};
+			if (matchSnap.exists()) {
+				matchData = { ...matchData, ...matchSnap.data() };
+			}
+			matchData.total++;
+			if (winner === projectA) {
+				matchData.winsA++;
+			} else {
+				matchData.winsB++;
+			}
+
+			// 5. Commit updates
+			transaction.set(voteRef, {
+				voterEmail,
+				projectA,
+				projectB,
+				winner,
+				generation,
+				timestamp: serverTimestamp()
+			});
+
+			const currentVoteCount = studentSnap.exists() ? (studentSnap.data().voteCount || 0) : 0;
+			transaction.update(studentRef, {
+				voteCount: currentVoteCount + 1
+			});
+
+			transaction.set(matchRef, matchData);
+
+			transaction.update(projARef, {
+				elo: newAScore,
+				wins: currentAWins + (winner === projectA ? 1 : 0),
+				losses: currentALosses + (winner === projectB ? 1 : 0),
+				totalMatches: currentAMatches + 1
+			});
+
+			transaction.update(projBRef, {
+				elo: newBScore,
+				wins: currentBWins + (winner === projectB ? 1 : 0),
+				losses: currentBLosses + (winner === projectA ? 1 : 0),
+				totalMatches: currentBMatches + 1
+			});
 		});
+
 		return { success: true };
 	} catch (error) {
-		console.error("Error submitting vote: ", error);
+		console.error("Transaction failed: ", error);
 		return { success: false, error };
 	}
 };
@@ -665,3 +919,157 @@ export const getGenerations = async () => {
 	}
 };
 
+export const getStudentsByGeneration = async (generation) => {
+	try {
+		const q = query(
+			collection(db, "students"),
+			where("generation", "==", Number(generation))
+		);
+		const snap = await getDocs(q);
+		return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+	} catch (error) {
+		console.error("Error getting students by generation:", error);
+		return [];
+	}
+};
+
+
+
+export const getMatchupsByGeneration = async (generation) => {
+	try {
+		const q = query(
+			collection(db, "matchups"),
+			where("generation", "==", Number(generation))
+		);
+		const snap = await getDocs(q);
+		return snap.docs.map(doc => doc.data());
+	} catch (error) {
+		console.error("Error getting matchups:", error);
+		return [];
+	}
+};
+
+export const syncVotingData = async (generation) => {
+	try {
+		// 1. Get all votes for the generation
+		const votesRef = collection(db, "votes");
+		const votesQuery = query(votesRef, where("generation", "==", Number(generation)));
+		const votesSnap = await getDocs(votesQuery);
+		const allVotes = votesSnap.docs.map(doc => doc.data());
+
+		// Sort chronologically to recompute ELO ratings correctly
+		allVotes.sort((a, b) => {
+			const tA = a.timestamp?.seconds || 0;
+			const tB = b.timestamp?.seconds || 0;
+			return tA - tB;
+		});
+
+		// 2. Fetch all projects for the generation
+		const projectsRef = collection(db, "projects");
+		const projectsQuery = query(projectsRef, where("generation", "==", Number(generation)));
+		const projectsSnap = await getDocs(projectsQuery);
+		const projectsList = projectsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+		// 3. Fetch all students for the generation
+		const studentsRef = collection(db, "students");
+		const studentsQuery = query(studentsRef, where("generation", "==", Number(generation)));
+		const studentsSnap = await getDocs(studentsQuery);
+		const studentsList = studentsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+		// 4. Initialize stats mapping
+		const projectStats = {};
+		projectsList.forEach(p => {
+			projectStats[p.id] = { elo: 1500, wins: 0, losses: 0, totalMatches: 0 };
+		});
+
+		const studentStats = {};
+		studentsList.forEach(s => {
+			studentStats[s.id] = { voteCount: 0 };
+		});
+
+		const matchupStats = {};
+
+		// 5. Recompute values
+		allVotes.forEach(vote => {
+			const { projectA, projectB, winner, voterEmail } = vote;
+
+			if (!projectStats[projectA]) projectStats[projectA] = { elo: 1500, wins: 0, losses: 0, totalMatches: 0 };
+			if (!projectStats[projectB]) projectStats[projectB] = { elo: 1500, wins: 0, losses: 0, totalMatches: 0 };
+
+			if (voterEmail) {
+				if (!studentStats[voterEmail]) studentStats[voterEmail] = { voteCount: 0 };
+				studentStats[voterEmail].voteCount++;
+			}
+
+			const K_FACTOR = 32;
+			const rA = projectStats[projectA].elo;
+			const rB = projectStats[projectB].elo;
+
+			const eA = 1 / (1 + Math.pow(10, (rB - rA) / 400));
+			const eB = 1 / (1 + Math.pow(10, (rA - rB) / 400));
+
+			const sA = winner === projectA ? 1 : 0;
+			const sB = winner === projectB ? 1 : 0;
+
+			projectStats[projectA].elo = Math.round(rA + K_FACTOR * (sA - eA));
+			projectStats[projectB].elo = Math.round(rB + K_FACTOR * (sB - eB));
+
+			projectStats[projectA].totalMatches++;
+			projectStats[projectB].totalMatches++;
+			if (winner === projectA) {
+				projectStats[projectA].wins++;
+				projectStats[projectB].losses++;
+			} else {
+				projectStats[projectB].wins++;
+				projectStats[projectA].losses++;
+			}
+
+			const pairId = [projectA, projectB].sort().join("_");
+			if (!matchupStats[pairId]) {
+				matchupStats[pairId] = {
+					projectA,
+					projectB,
+					generation,
+					winsA: 0,
+					winsB: 0,
+					total: 0
+				};
+			}
+			matchupStats[pairId].total++;
+			if (winner === projectA) {
+				matchupStats[pairId].winsA++;
+			} else {
+				matchupStats[pairId].winsB++;
+			}
+		});
+
+		// 6. Write aggregates to Firestore using Batch
+		const batch = writeBatch(db);
+
+		projectsList.forEach(p => {
+			const stats = projectStats[p.id];
+			if (stats) {
+				const ref = doc(db, "projects", p.id);
+				batch.update(ref, stats);
+			}
+		});
+
+		studentsList.forEach(s => {
+			const stats = studentStats[s.id];
+			const count = stats ? stats.voteCount : 0;
+			const ref = doc(db, "students", s.id);
+			batch.update(ref, { voteCount: count });
+		});
+
+		Object.entries(matchupStats).forEach(([pairId, data]) => {
+			const ref = doc(db, "matchups", pairId);
+			batch.set(ref, data);
+		});
+
+		await batch.commit();
+		return { success: true, voteCount: allVotes.length };
+	} catch (error) {
+		console.error("Sync voting data error:", error);
+		return { success: false, error };
+	}
+};
