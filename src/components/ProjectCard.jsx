@@ -70,14 +70,19 @@ const ProjectCard = ({ project, onEdit, onClick }) => {
 			className="bg-white dark:bg-gray-800 rounded-xl shadow-md hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 overflow-hidden border border-gray-100 dark:border-gray-700 flex flex-col h-[430px] group relative cursor-pointer ring-1 ring-gray-100 dark:ring-gray-700 will-change-transform"
 		>
 			<div className="relative h-44 overflow-hidden bg-gray-100 dark:bg-gray-700 flex-shrink-0">
-				{project.imageUrl ? (
+				{(project.thumbnailUrl || project.imageUrl) ? (
 					<img
-						src={project.imageUrl}
+						src={project.thumbnailUrl || project.imageUrl}
 						alt={project.title}
 						loading="lazy"
 						className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500"
 						onError={(e) => {
-							e.target.src = "https://via.placeholder.com/640x360?text=No+Image";
+							// thumbnailUrl 로드 실패 시 원본 imageUrl로 fallback
+							if (e.target.src !== project.imageUrl && project.imageUrl) {
+								e.target.src = project.imageUrl;
+							} else {
+								e.target.src = "https://via.placeholder.com/640x360?text=No+Image";
+							}
 						}}
 					/>
 				) : (
