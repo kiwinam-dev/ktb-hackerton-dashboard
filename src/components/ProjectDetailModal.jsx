@@ -9,6 +9,27 @@ import PasswordModal from './PasswordModal';
 import ConfirmModal from './ConfirmModal';
 import { checkProfanity } from '../lib/profanityFilter';
 
+const preprocessMarkdown = (text) => {
+	if (!text) return '';
+	
+	// Replace HTML <br> tags with newlines
+	let processed = text.replace(/<br\s*\/?>/gi, '\n');
+
+	// 1. Convert HTML img tags (e.g. <img src="..."> or <img src="..." />) to markdown image syntax ![image](url)
+	processed = processed.replace(
+		/<img[^>]*src=["']([^"']+)["'][^>]*\/?>/g,
+		'![image]($1)'
+	);
+
+	// 2. Convert GitHub blob URLs to raw user content URLs
+	processed = processed.replace(
+		/https:\/\/github\.com\/([^\/]+)\/([^\/]+)\/blob\/([^\/]+)\/([^\s\)\"\<\>]+)/g,
+		'https://raw.githubusercontent.com/$1/$2/$3/$4'
+	);
+
+	return processed;
+};
+
 const ProjectDetailModal = ({ project, isOpen, onClose, onCommentSuccess, showToast }) => {
 	const [comments, setComments] = useState([]);
 	const [newComment, setNewComment] = useState('');
@@ -371,7 +392,7 @@ const ProjectDetailModal = ({ project, isOpen, onClose, onCommentSuccess, showTo
 										</div>
 
 										<div className="prose prose-sm dark:prose-invert max-w-none text-gray-700 dark:text-gray-300 leading-relaxed mb-8 break-all">
-											<ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>{project.description}</ReactMarkdown>
+											<ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>{preprocessMarkdown(project.description)}</ReactMarkdown>
 										</div>
 
 										<div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
@@ -533,7 +554,7 @@ const ProjectDetailModal = ({ project, isOpen, onClose, onCommentSuccess, showTo
 																</div>
 																<div className="mt-2 text-sm text-gray-600 dark:text-gray-300 leading-relaxed prose prose-sm dark:prose-invert max-w-none">
 																	<ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
-																		{log.content}
+																		{preprocessMarkdown(log.content)}
 																	</ReactMarkdown>
 																</div>
 															</>

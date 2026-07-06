@@ -20,6 +20,7 @@ import {
 	addDoc,
 	onSnapshot,
 	query,
+	where,
 	orderBy,
 	serverTimestamp,
 	doc,
@@ -469,3 +470,198 @@ export const getDeploymentCount = async (projectId) => {
 		return 0;
 	}
 };
+
+// --- ELO Voting & Settings System ---
+
+export const getVotingSettings = async () => {
+	try {
+		const docRef = doc(db, "settings", "voting");
+		const docSnap = await getDoc(docRef);
+		if (docSnap.exists()) {
+			return docSnap.data();
+		} else {
+			const defaultSettings = {
+				isActive: true,
+				generation: 4,
+				createdAt: serverTimestamp()
+			};
+			await setDoc(docRef, defaultSettings);
+			return defaultSettings;
+		}
+	} catch (error) {
+		console.error("Error getting voting settings:", error);
+		return { isActive: false, generation: 4 };
+	}
+};
+
+export const saveVotingSettings = async (settings) => {
+	try {
+		const docRef = doc(db, "settings", "voting");
+		await setDoc(docRef, {
+			...settings,
+			updatedAt: serverTimestamp()
+		}, { merge: true });
+		return { success: true };
+	} catch (error) {
+		console.error("Error saving voting settings:", error);
+		return { success: false, error };
+	}
+};
+
+export const verifyStudentVoter = async (generation, course, name, birthdate) => {
+	try {
+		const q = query(
+			collection(db, "students"),
+			where("generation", "==", Number(generation)),
+			where("course", "==", course),
+			where("name", "==", name.trim()),
+			where("birthdate", "==", birthdate.trim())
+		);
+		const snap = await getDocs(q);
+
+		if (!snap.empty) {
+			const docSnap = snap.docs[0];
+			const studentData = docSnap.data();
+			return {
+				success: true,
+				voter: {
+					email: docSnap.id, 
+					name: studentData.name,
+					course: studentData.course,
+					generation: studentData.generation,
+					isAdmin: studentData.isAdmin || false
+				}
+			};
+		} else {
+			return { 
+				success: false, 
+				error: "등록된 학생 정보가 없거나 입력한 정보가 정확하지 않습니다. (과정, 이름, 생년월일 6자리를 확인해주세요)" 
+			};
+		}
+	} catch (error) {
+		console.error("Error verifying student voter:", error);
+		return { success: false, error: "서버 오류가 발생했습니다. 다시 시도해주세요." };
+	}
+};
+
+export const seedTestStudents = async () => {
+	try {
+		const studentRef = collection(db, "students");
+		const countSnap = await getCountFromServer(studentRef);
+		if (countSnap.data().count > 0) {
+			return; // Already seeded
+		}
+
+		const testStudents = [
+			// 3기
+			{ id: "3_풀스택_홍길동_930125", generation: 3, course: "풀스택", name: "홍길동", birthdate: "930125", isAdmin: false },
+			{ id: "3_풀스택_김철수_940212", generation: 3, course: "풀스택", name: "김철수", birthdate: "940212", isAdmin: false },
+			{ id: "3_풀스택_이영희_950315", generation: 3, course: "풀스택", name: "이영희", birthdate: "950315", isAdmin: false },
+			{ id: "3_인공지능_박민수_920420", generation: 3, course: "인공지능", name: "박민수", birthdate: "920420", isAdmin: false },
+			{ id: "3_인공지능_최정우_910525", generation: 3, course: "인공지능", name: "최정우", birthdate: "910525", isAdmin: false },
+			{ id: "3_클라우드_정다은_960630", generation: 3, course: "클라우드", name: "정다은", birthdate: "960630", isAdmin: false },
+			{ id: "3_클라우드_강하늘_970714", generation: 3, course: "클라우드", name: "강하늘", birthdate: "970714", isAdmin: false },
+			
+			// 4기
+			{ id: "4_풀스택_박지성_930225", generation: 4, course: "풀스택", name: "박지성", birthdate: "930225", isAdmin: false },
+			{ id: "4_풀스택_손흥민_920708", generation: 4, course: "풀스택", name: "손흥민", birthdate: "920708", isAdmin: false },
+			{ id: "4_인공지능_김연아_900905", generation: 4, course: "인공지능", name: "김연아", birthdate: "900905", isAdmin: false },
+			{ id: "4_인공지능_류현진_870325", generation: 4, course: "인공지능", name: "류현진", birthdate: "870325", isAdmin: false },
+			{ id: "4_클라우드_황희찬_960126", generation: 4, course: "클라우드", name: "황희찬", birthdate: "960126", isAdmin: false },
+			{ id: "4_클라우드_이강인_010219", generation: 4, course: "클라우드", name: "이강인", birthdate: "010219", isAdmin: false },
+
+			// 관리자 테스트용
+			{ id: "admin_admin_admin_123456", generation: 4, course: "풀스택", name: "관리자", birthdate: "123456", isAdmin: true },
+			{ id: "admin_admin_admin_123456_g3", generation: 3, course: "풀스택", name: "관리자", birthdate: "123456", isAdmin: true },
+		];
+
+		for (const student of testStudents) {
+			await setDoc(doc(db, "students", student.id), student);
+		}
+		console.log("Successfully seeded test students!");
+	} catch (e) {
+		console.error("Error seeding students:", e);
+	}
+};
+
+// Auto seed
+seedTestStudents();
+
+export const submitVote = async (voterEmail, projectA, projectB, winner, generation) => {
+	try {
+		// Pair ID (independent of presentation order)
+		const pairId = [projectA, projectB].sort().join("_");
+		const voteId = `${voterEmail}_${pairId}`;
+
+		const voteRef = doc(db, "votes", voteId);
+		await setDoc(voteRef, {
+			voterEmail,
+			projectA,
+			projectB,
+			winner,
+			generation,
+			timestamp: serverTimestamp()
+		});
+		return { success: true };
+	} catch (error) {
+		console.error("Error submitting vote: ", error);
+		return { success: false, error };
+	}
+};
+
+export const getVoterVotes = async (voterEmail) => {
+	try {
+		const q = query(
+			collection(db, "votes"),
+			where("voterEmail", "==", voterEmail)
+		);
+		const snap = await getDocs(q);
+		return snap.docs.map(doc => doc.data());
+	} catch (error) {
+		console.error("Error getting voter votes: ", error);
+		return [];
+	}
+};
+
+export const getVotesByGeneration = async (generation) => {
+	try {
+		const q = query(
+			collection(db, "votes"),
+			where("generation", "==", generation)
+		);
+		const snap = await getDocs(q);
+		return snap.docs.map(doc => doc.data());
+	} catch (error) {
+		console.error("Error getting votes by generation: ", error);
+		return [];
+	}
+};
+
+export const getGenerations = async () => {
+	try {
+		const coll = collection(db, "generations");
+		const snap = await getDocs(coll);
+		if (snap.empty) {
+			const defaults = [
+				{ id: "gen_1", value: 1, name: "1기", order: 1 },
+				{ id: "gen_2", value: 2, name: "2기", order: 2 },
+				{ id: "gen_3", value: 3, name: "3기", order: 3 },
+				{ id: "gen_4", value: 4, name: "4기", order: 4 },
+			];
+			for (const gen of defaults) {
+				await setDoc(doc(db, "generations", gen.id), gen);
+			}
+			return defaults.sort((a, b) => a.order - b.order);
+		}
+		return snap.docs.map(doc => doc.data()).sort((a, b) => a.order - b.order);
+	} catch (error) {
+		console.error("Error getting generations:", error);
+		return [
+			{ id: "gen_1", value: 1, name: "1기", order: 1 },
+			{ id: "gen_2", value: 2, name: "2기", order: 2 },
+			{ id: "gen_3", value: 3, name: "3기", order: 3 },
+			{ id: "gen_4", value: 4, name: "4기", order: 4 },
+		];
+	}
+};
+

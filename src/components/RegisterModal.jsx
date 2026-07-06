@@ -3,7 +3,7 @@ import { X, Loader2, Sparkles, Wand2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { addProject, updateProject } from '../lib/firebase';
 
-const RegisterModal = ({ isOpen, onClose, initialData = null, onSuccess, defaultGeneration = 3 }) => {
+const RegisterModal = ({ isOpen, onClose, initialData = null, onSuccess, defaultGeneration = 4, generations = [] }) => {
 	const [loading, setLoading] = useState(false);
 	const [fetchingOg, setFetchingOg] = useState(false);
 	const [formData, setFormData] = useState({
@@ -118,6 +118,7 @@ const RegisterModal = ({ isOpen, onClose, initialData = null, onSuccess, default
 
 		const submissionData = {
 			...formData,
+			generation: Number(formData.generation),
 			members: formData.members.split(',').map(m => m.trim()).filter(Boolean)
 		};
 
@@ -170,7 +171,24 @@ const RegisterModal = ({ isOpen, onClose, initialData = null, onSuccess, default
 
 							<div className="overflow-y-auto p-6">
 								<form id="project-form" onSubmit={handleSubmit} className="space-y-4">
-									<div className="grid grid-cols-2 gap-4">
+									<div className="grid grid-cols-3 gap-4">
+										<div>
+											<label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+												기수 선택 *
+											</label>
+											<select
+												name="generation"
+												value={formData.generation}
+												onChange={handleChange}
+												className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-kakao-yellow focus:border-transparent outline-none transition-all bg-white dark:bg-gray-700 text-gray-900 dark:text-white font-bold cursor-pointer h-[42px]"
+											>
+												{generations.map((gen) => (
+													<option key={gen.value} value={gen.value}>
+														{gen.name}
+													</option>
+												))}
+											</select>
+										</div>
 										<div>
 											<label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
 												팀 이름 (예: 1조) *

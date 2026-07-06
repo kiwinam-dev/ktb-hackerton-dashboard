@@ -5,7 +5,7 @@ import Footer from './components/Footer';
 import ProjectList from './components/ProjectList';
 import ProjectCardSkeleton from './components/ProjectCardSkeleton';
 import Toast from './components/Toast';
-import { subscribeToProjects, verifyProjectPassword } from './lib/firebase';
+import { subscribeToProjects, verifyProjectPassword, getGenerations } from './lib/firebase';
 import { AnimatePresence, motion } from 'framer-motion';
 
 // Lazy Load Modals
@@ -13,6 +13,7 @@ const RegisterModal = React.lazy(() => import('./components/RegisterModal'));
 const PasswordModal = React.lazy(() => import('./components/PasswordModal'));
 const ProjectDetailModal = React.lazy(() => import('./components/ProjectDetailModal'));
 const EntryGate = React.lazy(() => import('./components/EntryGate'));
+const VotingView = React.lazy(() => import('./components/VotingView'));
 
 function App() {
   // Auth State
@@ -27,6 +28,7 @@ function App() {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [view, setView] = useState('gallery'); // 'gallery' | 'vote'
   const [editingProject, setEditingProject] = useState(null);
   const [pendingEditProject, setPendingEditProject] = useState(null);
   const [selectedProject, setSelectedProject] = useState(null); // For detail modal
@@ -124,9 +126,18 @@ function App() {
 
 
   // Generation State
-  const [selectedGeneration, setSelectedGeneration] = useState(3);
+  const [selectedGeneration, setSelectedGeneration] = useState(4);
+  const [generations, setGenerations] = useState([]);
 
-  // ... (existing code)
+  useEffect(() => {
+    getGenerations().then(list => {
+      setGenerations(list);
+      if (list.length > 0) {
+        // Default to the latest generation (last item in order)
+        setSelectedGeneration(list[list.length - 1].value);
+      }
+    });
+  }, []);
 
   const sortedProjects = React.useMemo(() => {
     return [...projects]
@@ -160,44 +171,65 @@ function App() {
         toggleTheme={toggleTheme}
         selectedGeneration={selectedGeneration}
         onSelectGeneration={setSelectedGeneration}
+        currentView={view}
+        onViewChange={setView}
+        generations={generations}
       />
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full">
-        <div className="flex justify-end mb-6">
-          <div className="bg-white dark:bg-gray-800 p-1 rounded-lg border border-gray-200 dark:border-gray-700 inline-flex shadow-sm items-center transition-colors">
-            <button
-              onClick={() => setSortBy('latest')}
-              className={`px-4 py-2 text-sm font-bold rounded-md transition-all ${sortBy === 'latest'
-                ? 'bg-kakao-yellow text-kakao-black shadow-sm'
-                : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'
-                }`}
-            >
-              등록순
-            </button>
-            <button
-              onClick={() => setSortBy('likes')}
-              className={`px-4 py-2 text-sm font-bold rounded-md transition-all ${sortBy === 'likes'
-                ? 'bg-kakao-yellow text-kakao-black shadow-sm'
-                : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'
-                }`}
-            >
-              좋아요순
-            </button>
-          </div>
-        </div>
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full flex flex-col">
+        {view === 'gallery' ? (
+          <>
+            <div className="flex justify-end mb-6">
+              <div className="bg-white dark:bg-gray-800 p-1 rounded-lg border border-gray-200 dark:border-gray-700 inline-flex shadow-sm items-center transition-colors">
+                <button
+                  onClick={() => setSortBy('latest')}
+                  className={`px-4 py-2 text-sm font-bold rounded-md transition-all ${sortBy === 'latest'
+                    ? 'bg-kakao-yellow text-kakao-black shadow-sm'
+                    : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'
+                    }`}
+                >
+                  등록순
+                </button>
+                <button
+                  onClick={() => setSortBy('likes')}
+                  className={`px-4 py-2 text-sm font-bold rounded-md transition-all ${sortBy === 'likes'
+                    ? 'bg-kakao-yellow text-kakao-black shadow-sm'
+                    : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'
+                    }`}
+                >
+                  좋아요순
+                </button>
+              </div>
+            </div>
 
-        {loading ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {[...Array(8)].map((_, i) => (
-              <ProjectCardSkeleton key={i} />
-            ))}
-          </div>
+            {loading ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                {[...Array(8)].map((_, i) => (
+                  <ProjectCardSkeleton key={i} />
+                ))}
+              </div>
+            ) : (
+              <ProjectList
+                projects={sortedProjects}
+                onEdit={handleEditClick}
+                onCardClick={setSelectedProject}
+              />
+            )}
+          </>
         ) : (
-          <ProjectList
-            projects={sortedProjects}
-            onEdit={handleEditClick}
-            onCardClick={setSelectedProject}
-          />
+          <Suspense fallback={
+            <div className="text-center py-20 flex flex-col items-center justify-center gap-3">
+              <div className="w-8 h-8 border-2 border-kakao-yellow border-t-transparent rounded-full animate-spin" />
+              <p className="text-gray-500 dark:text-gray-400">화면 불러오는 중...</p>
+            </div>
+          }>
+            <VotingView
+              projects={projects}
+              onProjectClick={setSelectedProject}
+              showToast={showToast}
+              generations={generations}
+            />
+          </Suspense>
         )}
       </main>
 
@@ -217,6 +249,7 @@ function App() {
           initialData={editingProject}
           onSuccess={(msg) => showToast(msg)}
           defaultGeneration={selectedGeneration}
+          generations={generations}
         />
 
         <PasswordModal
