@@ -656,6 +656,14 @@ const VotingView = ({ projects, onProjectClick, showToast, generations = [] }) =
 																				h4: ({ node, ...props }) => <span className="font-bold text-xs" {...props} />,
 																				h5: ({ node, ...props }) => <span className="font-bold text-xs" {...props} />,
 																				h6: ({ node, ...props }) => <span className="font-bold text-xs" {...props} />,
+																				a: ({ node, children, ...props }) => (
+																					<span
+																						className="text-blue-500 dark:text-blue-400 underline cursor-default pointer-events-none"
+																						onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+																					>
+																						{children}
+																					</span>
+																				),
 																			}}
 																		>
 																			{preprocessMarkdown(currentPair[0].description)}
@@ -728,6 +736,14 @@ const VotingView = ({ projects, onProjectClick, showToast, generations = [] }) =
 																				h4: ({ node, ...props }) => <span className="font-bold text-xs" {...props} />,
 																				h5: ({ node, ...props }) => <span className="font-bold text-xs" {...props} />,
 																				h6: ({ node, ...props }) => <span className="font-bold text-xs" {...props} />,
+																				a: ({ node, children, ...props }) => (
+																					<span
+																						className="text-blue-500 dark:text-blue-400 underline cursor-default pointer-events-none"
+																						onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+																					>
+																						{children}
+																					</span>
+																				),
 																			}}
 																		>
 																			{preprocessMarkdown(currentPair[1].description)}
