@@ -3,17 +3,17 @@ import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
-import { 
-	Trophy, Vote, Lock, Mail, ArrowRight, LogOut, 
-	RefreshCw, Settings, CheckCircle2, AlertCircle, 
+import {
+	Trophy, Vote, Lock, Mail, ArrowRight, LogOut,
+	RefreshCw, Settings, CheckCircle2, AlertCircle,
 	Crown, Medal, Shield, Eye, Play, Square, Info, Calendar
 } from 'lucide-react';
-import { 
-	getVotingSettings, 
-	saveVotingSettings, 
-	verifyStudentVoter, 
-	submitVote, 
-	getVoterVotes, 
+import {
+	getVotingSettings,
+	saveVotingSettings,
+	verifyStudentVoter,
+	submitVote,
+	getVoterVotes,
 	db
 } from '../lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
@@ -24,7 +24,7 @@ const MAX_VOTES_PER_USER = 40;
 
 const preprocessMarkdown = (text) => {
 	if (!text) return '';
-	
+
 	// Replace HTML <br> tags with newlines
 	let processed = text.replace(/<br\s*\/?>/gi, '\n');
 
@@ -46,7 +46,7 @@ const preprocessMarkdown = (text) => {
 const VotingView = ({ projects, onProjectClick, showToast, generations = [] }) => {
 	// Active main tab: 'vote' or 'ranking' or 'admin'
 	const [activeTab, setActiveTab] = useState('vote');
-	
+
 	// Settings State
 	const [settings, setSettings] = useState({ isActive: false, generation: 4 });
 	const [settingsLoading, setSettingsLoading] = useState(true);
@@ -56,7 +56,7 @@ const VotingView = ({ projects, onProjectClick, showToast, generations = [] }) =
 		const saved = localStorage.getItem('ktb_voter');
 		return saved ? JSON.parse(saved) : null;
 	});
-	
+
 	const [selectedCourse, setSelectedCourse] = useState('풀스택');
 	const [voterName, setVoterName] = useState('');
 	const [birthdate, setBirthdate] = useState('');
@@ -186,8 +186,12 @@ const VotingView = ({ projects, onProjectClick, showToast, generations = [] }) =
 
 	// --- Matchup Pairing Logic ---
 	const activeGenProjects = useMemo(() => {
-		return projects.filter(p => (p.generation || 3) === settings.generation);
-	}, [projects, settings.generation]);
+		let list = projects.filter(p => (p.generation || 3) === settings.generation);
+		if (voter && !voter.isAdmin) {
+			list = list.filter(p => !(p.members || []).includes(voter.email));
+		}
+		return list;
+	}, [projects, settings.generation, voter]);
 
 	const allPairs = useMemo(() => {
 		const pairs = [];
@@ -262,7 +266,7 @@ const VotingView = ({ projects, onProjectClick, showToast, generations = [] }) =
 	const handleVote = async (winnerId) => {
 		if (!voter || !currentPair) return;
 		const [projA, projB] = currentPair;
-		
+
 		const newVote = {
 			projectA: projA.id,
 			projectB: projB.id,
@@ -326,8 +330,8 @@ const VotingView = ({ projects, onProjectClick, showToast, generations = [] }) =
 		}
 	};
 
-	const progressPercent = targetMatches > 0 
-		? Math.min(100, Math.round((votedPairKeysSet.size / targetMatches) * 100)) 
+	const progressPercent = targetMatches > 0
+		? Math.min(100, Math.round((votedPairKeysSet.size / targetMatches) * 100))
 		: 0;
 
 	return (
@@ -403,7 +407,7 @@ const VotingView = ({ projects, onProjectClick, showToast, generations = [] }) =
 								transition={{ duration: 0.25 }}
 								className="flex flex-col flex-1"
 							>
-								{!settings.isActive && !voter?.isAdmin && !showAdminLogin ? (
+								{!settings.isActive && (!voter || !voter.isAdmin) && !showAdminLogin ? (
 									/* 2. Voting Inactive Screen */
 									<div className="max-w-md w-full mx-auto text-center py-12 px-6 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-xl my-auto">
 										<div className="w-16 h-16 bg-amber-50 dark:bg-amber-900/20 text-amber-500 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -556,7 +560,7 @@ const VotingView = ({ projects, onProjectClick, showToast, generations = [] }) =
 											{settings.generation}기 프로젝트의 ELO 매치업 투표 목표를 달성하셨습니다.<br />
 											소중한 한 표 감사합니다!
 										</p>
-										
+
 										{skippedPairs.size > 0 && votedPairKeysSet.size < targetMatches && (
 											<button
 												onClick={handleResetSkipped}
@@ -588,7 +592,7 @@ const VotingView = ({ projects, onProjectClick, showToast, generations = [] }) =
 												</span>
 											</div>
 											<div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-2.5 overflow-hidden">
-												<motion.div 
+												<motion.div
 													className="bg-kakao-yellow h-full rounded-full"
 													initial={{ width: 0 }}
 													animate={{ width: `${progressPercent}%` }}
@@ -614,9 +618,10 @@ const VotingView = ({ projects, onProjectClick, showToast, generations = [] }) =
 														>
 															<div className="h-44 bg-gray-100 dark:bg-gray-700 relative overflow-hidden flex-shrink-0">
 																{currentPair[0].imageUrl ? (
-																	<img 
-																		src={currentPair[0].imageUrl} 
-																		alt={currentPair[0].title} 
+																	<img
+																		src={currentPair[0].imageUrl}
+																		alt={currentPair[0].title}
+																		loading="lazy"
 																		className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
 																		onError={(e) => { e.target.src = "https://via.placeholder.com/640x360?text=No+Image"; }}
 																	/>
@@ -642,22 +647,22 @@ const VotingView = ({ projects, onProjectClick, showToast, generations = [] }) =
 																		</div>
 																	)}
 																	<div className="text-gray-500 dark:text-gray-400 text-xs line-clamp-3 leading-relaxed mb-4 prose prose-sm dark:prose-invert prose-p:my-0 prose-headings:my-0 prose-ul:my-0 prose-li:my-0 max-w-none break-all">
-																		<ReactMarkdown 
+																		<ReactMarkdown
 																			remarkPlugins={[remarkGfm, remarkBreaks]}
 																			components={{
-																				h1: ({node, ...props}) => <span className="font-bold text-xs" {...props} />,
-																				h2: ({node, ...props}) => <span className="font-bold text-xs" {...props} />,
-																				h3: ({node, ...props}) => <span className="font-bold text-xs" {...props} />,
-																				h4: ({node, ...props}) => <span className="font-bold text-xs" {...props} />,
-																				h5: ({node, ...props}) => <span className="font-bold text-xs" {...props} />,
-																				h6: ({node, ...props}) => <span className="font-bold text-xs" {...props} />,
+																				h1: ({ node, ...props }) => <span className="font-bold text-xs" {...props} />,
+																				h2: ({ node, ...props }) => <span className="font-bold text-xs" {...props} />,
+																				h3: ({ node, ...props }) => <span className="font-bold text-xs" {...props} />,
+																				h4: ({ node, ...props }) => <span className="font-bold text-xs" {...props} />,
+																				h5: ({ node, ...props }) => <span className="font-bold text-xs" {...props} />,
+																				h6: ({ node, ...props }) => <span className="font-bold text-xs" {...props} />,
 																			}}
 																		>
 																			{preprocessMarkdown(currentPair[0].description)}
 																		</ReactMarkdown>
 																	</div>
 																</div>
-																<button 
+																<button
 																	onClick={(e) => { e.stopPropagation(); onProjectClick(currentPair[0]); }}
 																	className="w-full py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300 font-bold rounded-xl text-xs transition-colors border border-gray-205 dark:border-gray-700"
 																>
@@ -685,9 +690,10 @@ const VotingView = ({ projects, onProjectClick, showToast, generations = [] }) =
 														>
 															<div className="h-44 bg-gray-100 dark:bg-gray-700 relative overflow-hidden flex-shrink-0">
 																{currentPair[1].imageUrl ? (
-																	<img 
-																		src={currentPair[1].imageUrl} 
-																		alt={currentPair[1].title} 
+																	<img
+																		src={currentPair[1].imageUrl}
+																		alt={currentPair[1].title}
+																		loading="lazy"
 																		className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
 																		onError={(e) => { e.target.src = "https://via.placeholder.com/640x360?text=No+Image"; }}
 																	/>
@@ -713,22 +719,22 @@ const VotingView = ({ projects, onProjectClick, showToast, generations = [] }) =
 																		</div>
 																	)}
 																	<div className="text-gray-500 dark:text-gray-400 text-xs line-clamp-3 leading-relaxed mb-4 prose prose-sm dark:prose-invert prose-p:my-0 prose-headings:my-0 prose-ul:my-0 prose-li:my-0 max-w-none break-all">
-																		<ReactMarkdown 
+																		<ReactMarkdown
 																			remarkPlugins={[remarkGfm, remarkBreaks]}
 																			components={{
-																				h1: ({node, ...props}) => <span className="font-bold text-xs" {...props} />,
-																				h2: ({node, ...props}) => <span className="font-bold text-xs" {...props} />,
-																				h3: ({node, ...props}) => <span className="font-bold text-xs" {...props} />,
-																				h4: ({node, ...props}) => <span className="font-bold text-xs" {...props} />,
-																				h5: ({node, ...props}) => <span className="font-bold text-xs" {...props} />,
-																				h6: ({node, ...props}) => <span className="font-bold text-xs" {...props} />,
+																				h1: ({ node, ...props }) => <span className="font-bold text-xs" {...props} />,
+																				h2: ({ node, ...props }) => <span className="font-bold text-xs" {...props} />,
+																				h3: ({ node, ...props }) => <span className="font-bold text-xs" {...props} />,
+																				h4: ({ node, ...props }) => <span className="font-bold text-xs" {...props} />,
+																				h5: ({ node, ...props }) => <span className="font-bold text-xs" {...props} />,
+																				h6: ({ node, ...props }) => <span className="font-bold text-xs" {...props} />,
 																			}}
 																		>
 																			{preprocessMarkdown(currentPair[1].description)}
 																		</ReactMarkdown>
 																	</div>
 																</div>
-																<button 
+																<button
 																	onClick={(e) => { e.stopPropagation(); onProjectClick(currentPair[1]); }}
 																	className="w-full py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300 font-bold rounded-xl text-xs transition-colors border border-gray-200 dark:border-gray-700"
 																>
@@ -773,7 +779,7 @@ const VotingView = ({ projects, onProjectClick, showToast, generations = [] }) =
 										<Trophy className="w-5 h-5 text-amber-500" />
 										<span>ELO 실시간 랭킹 보드</span>
 									</h3>
-									
+
 									<div className="flex items-center gap-2">
 										<span className="text-xs font-semibold text-gray-500 dark:text-gray-400">기수 선택:</span>
 										<select
@@ -814,9 +820,9 @@ const VotingView = ({ projects, onProjectClick, showToast, generations = [] }) =
 													{eloRankings.map((proj, index) => {
 														const rank = index + 1;
 														const isTop3 = rank <= 3;
-														
+
 														return (
-															<tr 
+															<tr
 																key={proj.id}
 																onClick={() => onProjectClick(proj)}
 																className="hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors cursor-pointer"
@@ -848,9 +854,9 @@ const VotingView = ({ projects, onProjectClick, showToast, generations = [] }) =
 																<td className="px-6 py-4 align-middle">
 																	<div className="flex items-center gap-3">
 																		{(proj.thumbnailUrl || proj.imageUrl) && (
-																			<img 
-																				src={proj.thumbnailUrl || proj.imageUrl} 
-																				alt={proj.title} 
+																			<img
+																				src={proj.thumbnailUrl || proj.imageUrl}
+																				alt={proj.title}
 																				loading="lazy"
 																				className="w-12 h-8 object-cover rounded-md border border-gray-100 dark:border-gray-700 flex-shrink-0"
 																				onError={(e) => {
