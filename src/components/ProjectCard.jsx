@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { ExternalLink, Edit2, Heart, MessageCircle } from 'lucide-react';
 import { toggleLike } from '../lib/firebase';
+import ImageWithLoader from './ImageWithLoader';
 
 const ProjectCard = ({ project, onEdit, onClick }) => {
 	const [isLiking, setIsLiking] = useState(false);
@@ -71,19 +72,12 @@ const ProjectCard = ({ project, onEdit, onClick }) => {
 		>
 			<div className="relative h-44 overflow-hidden bg-gray-100 dark:bg-gray-700 flex-shrink-0">
 				{(project.thumbnailUrl || project.imageUrl) ? (
-					<img
+					<ImageWithLoader
 						src={project.thumbnailUrl || project.imageUrl}
 						alt={project.title}
-						loading="lazy"
-						className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500"
-						onError={(e) => {
-							// thumbnailUrl 로드 실패 시 원본 imageUrl로 fallback
-							if (e.target.src !== project.imageUrl && project.imageUrl) {
-								e.target.src = project.imageUrl;
-							} else {
-								e.target.src = "https://via.placeholder.com/640x360?text=No+Image";
-							}
-						}}
+						fallbackSrc={project.imageUrl || "https://via.placeholder.com/640x360?text=No+Image"}
+						className="w-full h-full"
+						imgClassName="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500"
 					/>
 				) : (
 					<div className="w-full h-full flex items-center justify-center text-gray-400 dark:text-gray-500">

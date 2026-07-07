@@ -28,7 +28,10 @@ const uploadToStorage = async (path, thumbBlob) => {
 	const { ref, uploadBytes, getDownloadURL } = await import("firebase/storage");
 	const store = await getStorageInstance();
 	const storageRef = ref(store, path);
-	await uploadBytes(storageRef, thumbBlob, { contentType: thumbBlob.type });
+	await uploadBytes(storageRef, thumbBlob, { 
+		contentType: thumbBlob.type,
+		cacheControl: 'public,max-age=31536000'
+	});
 	return await getDownloadURL(storageRef);
 };
 

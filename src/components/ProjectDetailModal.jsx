@@ -8,6 +8,7 @@ import { addComment, subscribeToComments, deleteComment, updateComment, verifyCo
 import PasswordModal from './PasswordModal';
 import ConfirmModal from './ConfirmModal';
 import { checkProfanity } from '../lib/profanityFilter';
+import ImageWithLoader from './ImageWithLoader';
 
 const preprocessMarkdown = (text) => {
 	if (!text) return '';
@@ -391,7 +392,12 @@ const ProjectDetailModal = ({ project, isOpen, onClose, onCommentSuccess, showTo
 									<div className="p-6 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50">
 										<div className="rounded-xl overflow-hidden shadow-sm border border-gray-200 dark:border-gray-700 mb-6 bg-white dark:bg-gray-800">
 											{project.imageUrl ? (
-												<img src={project.imageUrl} alt={project.title} className="w-full h-auto object-cover max-h-[400px]" />
+												<ImageWithLoader
+													src={project.imageUrl}
+													alt={project.title}
+													className="w-full h-auto"
+													imgClassName="w-full h-auto object-cover max-h-[400px]"
+												/>
 											) : (
 												<div className="aspect-video flex items-center justify-center bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500">
 													이미지 없음

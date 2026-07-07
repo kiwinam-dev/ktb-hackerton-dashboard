@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { X, Loader2, Sparkles, Wand2, Upload, XCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { addProject, updateProject, uploadThumbnailFromUrl, uploadThumbnailFromFile } from '../lib/firebase';
+import ImageWithLoader from './ImageWithLoader';
 
 const RegisterModal = ({ isOpen, onClose, initialData = null, onSuccess, defaultGeneration = 4, generations = [] }) => {
 	const [loading, setLoading] = useState(false);
@@ -422,10 +423,11 @@ const RegisterModal = ({ isOpen, onClose, initialData = null, onSuccess, default
 										{/* 미리보기: 파일 선택 시 파일 프리뷰, URL만 있을 때 URL 프리뷰 */}
 										{(imagePreview || formData.imageUrl) && (
 											<div className="mt-2 relative rounded-lg overflow-hidden border border-gray-200 aspect-video bg-gray-50">
-												<img
+												<ImageWithLoader
 													src={imagePreview || formData.imageUrl}
 													alt="Preview"
-													className="w-full h-full object-cover"
+													className="w-full h-full"
+													imgClassName="w-full h-full object-cover"
 												/>
 												{imagePreview && (
 													<div className="absolute bottom-1.5 right-1.5 bg-green-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
