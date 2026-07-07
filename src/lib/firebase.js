@@ -919,6 +919,72 @@ export const getGenerations = async () => {
 	}
 };
 
+// --- Admin Management Functions ---
+
+export const updateGeneration = async (genId, data) => {
+	try {
+		const genRef = doc(db, "generations", genId);
+		await setDoc(genRef, data, { merge: true });
+		return { success: true };
+	} catch (error) {
+		console.error("Error updating generation:", error);
+		return { success: false, error };
+	}
+};
+
+export const deleteGeneration = async (genId) => {
+	try {
+		const genRef = doc(db, "generations", genId);
+		await deleteDoc(genRef);
+		return { success: true };
+	} catch (error) {
+		console.error("Error deleting generation:", error);
+		return { success: false, error };
+	}
+};
+
+export const updateSystemPassword = async (currentPassword, newPassword) => {
+	try {
+		const isValid = await verifySystemPassword(currentPassword);
+		if (!isValid) {
+			return { success: false, error: "현재 비밀번호가 일치하지 않습니다." };
+		}
+		const newHash = await hashPassword(newPassword);
+		const docRef = doc(db, "settings", "system");
+		await setDoc(docRef, { entryPassword: newHash }, { merge: true });
+		return { success: true };
+	} catch (error) {
+		console.error("Error updating system password:", error);
+		return { success: false, error: "비밀번호 변경 중 오류가 발생했습니다." };
+	}
+};
+
+export const adminDeleteProject = async (projectId) => {
+	try {
+		await deleteDoc(doc(db, "projects", projectId));
+		try {
+			await deleteDoc(doc(db, PROJECT_SECRETS_COLLECTION, projectId));
+		} catch (e) {
+			// secret 문서가 없어도 무시
+		}
+		return { success: true };
+	} catch (error) {
+		console.error("Error deleting project:", error);
+		return { success: false, error };
+	}
+};
+
+export const adminUpdateProjectPassword = async (projectId, newPassword) => {
+	try {
+		const hashedPw = await hashPassword(newPassword);
+		await setDoc(doc(db, PROJECT_SECRETS_COLLECTION, projectId), { password: hashedPw }, { merge: true });
+		return { success: true };
+	} catch (error) {
+		console.error("Error updating project password:", error);
+		return { success: false, error };
+	}
+};
+
 export const getStudentsByGeneration = async (generation) => {
 	try {
 		const q = query(
