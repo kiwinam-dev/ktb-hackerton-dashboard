@@ -8,6 +8,7 @@ import {
 	RefreshCw, Settings, CheckCircle2, AlertCircle,
 	Crown, Medal, Shield, Eye, Play, Square, Info, Calendar
 } from 'lucide-react';
+import ImageWithLoader from './ImageWithLoader';
 import {
 	getVotingSettings,
 	saveVotingSettings,
@@ -618,12 +619,12 @@ const VotingView = ({ projects, onProjectClick, showToast, generations = [] }) =
 														>
 															<div className="h-44 bg-gray-100 dark:bg-gray-700 relative overflow-hidden flex-shrink-0">
 																{currentPair[0].imageUrl ? (
-																	<img
+																	<ImageWithLoader
 																		src={currentPair[0].imageUrl}
 																		alt={currentPair[0].title}
-																		loading="lazy"
-																		className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-																		onError={(e) => { e.target.src = "https://via.placeholder.com/640x360?text=No+Image"; }}
+																		fallbackSrc="https://via.placeholder.com/640x360?text=No+Image"
+																		className="w-full h-full"
+																		imgClassName="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
 																	/>
 																) : (
 																	<div className="w-full h-full flex items-center justify-center text-gray-400">이미지 준비중</div>
@@ -646,29 +647,7 @@ const VotingView = ({ projects, onProjectClick, showToast, generations = [] }) =
 																			))}
 																		</div>
 																	)}
-																	<div className="text-gray-500 dark:text-gray-400 text-xs line-clamp-3 leading-relaxed mb-4 prose prose-sm dark:prose-invert prose-p:my-0 prose-headings:my-0 prose-ul:my-0 prose-li:my-0 max-w-none break-all">
-																		<ReactMarkdown
-																			remarkPlugins={[remarkGfm, remarkBreaks]}
-																			components={{
-																				h1: ({ node, ...props }) => <span className="font-bold text-xs" {...props} />,
-																				h2: ({ node, ...props }) => <span className="font-bold text-xs" {...props} />,
-																				h3: ({ node, ...props }) => <span className="font-bold text-xs" {...props} />,
-																				h4: ({ node, ...props }) => <span className="font-bold text-xs" {...props} />,
-																				h5: ({ node, ...props }) => <span className="font-bold text-xs" {...props} />,
-																				h6: ({ node, ...props }) => <span className="font-bold text-xs" {...props} />,
-																				a: ({ node, children, ...props }) => (
-																					<span
-																						className="text-blue-500 dark:text-blue-400 underline cursor-default pointer-events-none"
-																						onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
-																					>
-																						{children}
-																					</span>
-																				),
-																			}}
-																		>
-																			{preprocessMarkdown(currentPair[0].description)}
-																		</ReactMarkdown>
-																	</div>
+
 																</div>
 																<button
 																	onClick={(e) => { e.stopPropagation(); onProjectClick(currentPair[0]); }}
@@ -698,12 +677,12 @@ const VotingView = ({ projects, onProjectClick, showToast, generations = [] }) =
 														>
 															<div className="h-44 bg-gray-100 dark:bg-gray-700 relative overflow-hidden flex-shrink-0">
 																{currentPair[1].imageUrl ? (
-																	<img
+																	<ImageWithLoader
 																		src={currentPair[1].imageUrl}
 																		alt={currentPair[1].title}
-																		loading="lazy"
-																		className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-																		onError={(e) => { e.target.src = "https://via.placeholder.com/640x360?text=No+Image"; }}
+																		fallbackSrc="https://via.placeholder.com/640x360?text=No+Image"
+																		className="w-full h-full"
+																		imgClassName="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
 																	/>
 																) : (
 																	<div className="w-full h-full flex items-center justify-center text-gray-400">이미지 준비중</div>
@@ -726,29 +705,7 @@ const VotingView = ({ projects, onProjectClick, showToast, generations = [] }) =
 																			))}
 																		</div>
 																	)}
-																	<div className="text-gray-500 dark:text-gray-400 text-xs line-clamp-3 leading-relaxed mb-4 prose prose-sm dark:prose-invert prose-p:my-0 prose-headings:my-0 prose-ul:my-0 prose-li:my-0 max-w-none break-all">
-																		<ReactMarkdown
-																			remarkPlugins={[remarkGfm, remarkBreaks]}
-																			components={{
-																				h1: ({ node, ...props }) => <span className="font-bold text-xs" {...props} />,
-																				h2: ({ node, ...props }) => <span className="font-bold text-xs" {...props} />,
-																				h3: ({ node, ...props }) => <span className="font-bold text-xs" {...props} />,
-																				h4: ({ node, ...props }) => <span className="font-bold text-xs" {...props} />,
-																				h5: ({ node, ...props }) => <span className="font-bold text-xs" {...props} />,
-																				h6: ({ node, ...props }) => <span className="font-bold text-xs" {...props} />,
-																				a: ({ node, children, ...props }) => (
-																					<span
-																						className="text-blue-500 dark:text-blue-400 underline cursor-default pointer-events-none"
-																						onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
-																					>
-																						{children}
-																					</span>
-																				),
-																			}}
-																		>
-																			{preprocessMarkdown(currentPair[1].description)}
-																		</ReactMarkdown>
-																	</div>
+
 																</div>
 																<button
 																	onClick={(e) => { e.stopPropagation(); onProjectClick(currentPair[1]); }}
@@ -870,27 +827,27 @@ const VotingView = ({ projects, onProjectClick, showToast, generations = [] }) =
 																<td className="px-6 py-4 align-middle">
 																	<div className="flex items-center gap-3">
 																		{(proj.thumbnailUrl || proj.imageUrl) && (
-																			<img
+																			<ImageWithLoader
 																				src={proj.thumbnailUrl || proj.imageUrl}
 																				alt={proj.title}
-																				loading="lazy"
-																				className="w-12 h-8 object-cover rounded-md border border-gray-100 dark:border-gray-700 flex-shrink-0"
-																				onError={(e) => {
-																					if (e.target.src !== proj.imageUrl && proj.imageUrl) {
-																						e.target.src = proj.imageUrl;
-																					} else {
-																						e.target.style.display = 'none';
-																					}
-																				}}
+																				fallbackSrc={proj.imageUrl || ""}
+																				className="w-12 h-8 rounded-md border border-gray-100 dark:border-gray-700 flex-shrink-0"
+																				imgClassName="w-full h-full object-cover"
 																			/>
 																		)}
 																		<div className="min-w-0">
 																			<div className="text-sm font-bold text-gray-900 dark:text-white truncate">
 																				{proj.title}
 																			</div>
-																			<div className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-md">
-																				{proj.description}
-																			</div>
+																			{proj.tags && proj.tags.length > 0 && (
+																				<div className="flex flex-wrap gap-1 mt-1 max-w-md">
+																					{proj.tags.slice(0, 3).map((tag, idx) => (
+																						<span key={idx} className="inline-block text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-900/10 text-blue-600 dark:text-blue-400 border border-blue-100/40 dark:border-blue-900/20">
+																							#{tag}
+																						</span>
+																					))}
+																				</div>
+																			)}
 																		</div>
 																	</div>
 																</td>
@@ -923,8 +880,8 @@ const VotingView = ({ projects, onProjectClick, showToast, generations = [] }) =
 												</tbody>
 											</table>
 										</div>
-										<div className="bg-gray-50/50 dark:bg-gray-700/30 px-6 py-3 border-t border-gray-100 dark:border-gray-700 text-xs text-gray-500 dark:text-gray-400">
-											* 총 투표 매치 기록 수: <strong className="text-gray-800 dark:text-gray-200">{eloRankings.reduce((sum, p) => sum + (p.totalMatches || 0), 0)}건</strong> (매주 투표를 통해 무작위 경쟁에 의한 점수 누적 방식)
+										<div className="bg-gray-50/50 dark:bg-gray-700/30 px-6 py-3 border-t border-gray-100 dark:border-gray-700 text-sm text-gray-500 dark:text-gray-400">
+											* 총 투표 매치 기록 수: <strong className="text-gray-800 dark:text-gray-200">{eloRankings.reduce((sum, p) => sum + (p.totalMatches || 0), 0)}건</strong> (투표를 통해 무작위 경쟁에 의한 점수 누적 방식)
 										</div>
 									</div>
 								)}
