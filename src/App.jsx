@@ -135,9 +135,23 @@ function App() {
       setGenerations(list);
       if (list.length > 0) {
         // Default to the latest generation (last item in order)
-        setSelectedGeneration(list[list.length - 1].value);
+        const sortedList = [...list].sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
+        setSelectedGeneration(sortedList[sortedList.length - 1].value);
       }
     });
+  }, []);
+
+  const handleViewChange = useCallback((newView) => {
+    setView(newView);
+    if (newView === 'gallery') {
+      getGenerations().then(list => {
+        setGenerations(list);
+        if (list.length > 0) {
+          const sortedList = [...list].sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
+          setSelectedGeneration(sortedList[sortedList.length - 1].value);
+        }
+      });
+    }
   }, []);
 
   const sortedProjects = React.useMemo(() => {
@@ -173,7 +187,7 @@ function App() {
         selectedGeneration={selectedGeneration}
         onSelectGeneration={setSelectedGeneration}
         currentView={view}
-        onViewChange={setView}
+        onViewChange={handleViewChange}
         generations={generations}
       />
 
@@ -240,7 +254,7 @@ function App() {
           }>
             <AdminDashboard
               projects={projects}
-              onBackToGallery={() => setView('gallery')}
+              onBackToGallery={() => handleViewChange('gallery')}
               showToast={showToast}
             />
           </Suspense>
@@ -250,7 +264,7 @@ function App() {
       {/* Detail Modal */}
       <Suspense fallback={null}>
         <ProjectDetailModal
-          project={selectedProject}
+          project={projects.find(p => p.id === selectedProject?.id) || selectedProject}
           isOpen={!!selectedProject}
           onClose={() => setSelectedProject(null)}
           showToast={showToast}
@@ -288,7 +302,7 @@ function App() {
       {/* Scroll to Top */}
       <ScrollToTop />
 
-      <Footer onAdminClick={() => setView('admin_dashboard')} />
+      <Footer onAdminClick={() => handleViewChange('admin_dashboard')} />
     </div>
   );
 }

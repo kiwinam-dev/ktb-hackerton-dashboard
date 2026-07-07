@@ -88,7 +88,7 @@ const EntryGate = ({ onLogin }) => {
 
 					<div className="text-center">
 						<p className="text-xs text-gray-400 mt-4">
-							* KTB 3기 해커톤 내부 공유용 서비스입니다.
+							* 카카오테크부트캠프 프로젝트 내부 공유용 서비스입니다.
 						</p>
 					</div>
 				</motion.form>
