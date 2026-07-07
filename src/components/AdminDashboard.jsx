@@ -4,7 +4,7 @@ import {
 	Calendar, ChevronRight, RefreshCw, Shield, Lock,
 	Eye, Play, FileText, Check, AlertCircle, Download,
 	Settings, Edit2, Trash2, Save, X, KeyRound, ChevronUp, ChevronDown,
-	Vote, ToggleLeft, ToggleRight
+	Vote, ToggleLeft, ToggleRight, Plus
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import {
@@ -15,9 +15,11 @@ import {
 	getVotesByGeneration,
 	getGenerations,
 	verifySystemPassword,
+	verifyAdminPassword,
 	updateGeneration,
 	deleteGeneration,
 	updateSystemPassword,
+	updateAdminPassword,
 	adminDeleteProject,
 	adminUpdateProjectPassword,
 	getVotingSettings,
@@ -61,6 +63,8 @@ const AdminDashboard = ({ projects, onBackToGallery, showToast }) => {
 	// 1. 갤러리 기수 수정
 	const [localGenerations, setLocalGenerations] = useState([]);
 	const [genSaving, setGenSaving] = useState(false);
+	const [newGenName, setNewGenName] = useState('');
+	const [newGenValue, setNewGenValue] = useState('');
 
 	// 2. 입장 비밀번호 수정
 	const [currentPw, setCurrentPw] = useState('');
@@ -68,6 +72,13 @@ const AdminDashboard = ({ projects, onBackToGallery, showToast }) => {
 	const [confirmPw, setConfirmPw] = useState('');
 	const [pwChanging, setPwChanging] = useState(false);
 	const [pwError, setPwError] = useState('');
+
+	// 2-2. 관리자 어드민 비밀번호 수정
+	const [currentAdminPw, setCurrentAdminPw] = useState('');
+	const [newAdminPw, setNewAdminPw] = useState('');
+	const [confirmAdminPw, setConfirmAdminPw] = useState('');
+	const [adminPwChanging, setAdminPwChanging] = useState(false);
+	const [adminPwError, setAdminPwError] = useState('');
 
 	// 3. 프로젝트 관리
 	const [projectEditTarget, setProjectEditTarget] = useState(null);
@@ -86,6 +97,8 @@ const AdminDashboard = ({ projects, onBackToGallery, showToast }) => {
 		setCurrentView(view);
 		if (view === 'generations') {
 			setLocalGenerations(generations.map(g => ({ ...g })));
+			setNewGenName('');
+			setNewGenValue('');
 		}
 		if (view === 'voting') {
 			const vs = await getVotingSettings();
@@ -105,6 +118,10 @@ const AdminDashboard = ({ projects, onBackToGallery, showToast }) => {
 			setNewPw('');
 			setConfirmPw('');
 			setPwError('');
+			setCurrentAdminPw('');
+			setNewAdminPw('');
+			setConfirmAdminPw('');
+			setAdminPwError('');
 		}
 	};
 
@@ -155,7 +172,7 @@ const AdminDashboard = ({ projects, onBackToGallery, showToast }) => {
 		setAuthLoading(true);
 		setAuthError('');
 		try {
-			const isValid = await verifySystemPassword(systemPassword);
+			const isValid = await verifyAdminPassword(systemPassword);
 			if (isValid) {
 				setIsAuthorized(true);
 				sessionStorage.setItem('ktb_admin_auth', 'true');
@@ -364,6 +381,48 @@ const AdminDashboard = ({ projects, onBackToGallery, showToast }) => {
 		setLocalGenerations(reordered);
 	};
 
+	const handleAddGenerationClick = () => {
+		if (!newGenName.trim()) {
+			showToast('기수 이름을 입력해주세요.', 'error');
+			return;
+		}
+		if (!newGenValue.toString().trim()) {
+			showToast('기수값(숫자)을 입력해주세요.', 'error');
+			return;
+		}
+
+		const valueNum = Number(newGenValue);
+		if (isNaN(valueNum) || valueNum <= 0) {
+			showToast('기수값은 올바른 양수 숫자여야 합니다.', 'error');
+			return;
+		}
+
+		// 중복 체크
+		const isNameDuplicate = localGenerations.some(g => g.name === newGenName.trim());
+		const isValueDuplicate = localGenerations.some(g => g.value === valueNum);
+
+		if (isNameDuplicate || isValueDuplicate) {
+			showToast('이미 존재하는 기수 이름 또는 기수값입니다.', 'error');
+			return;
+		}
+
+		const nextOrder = localGenerations.length > 0
+			? Math.max(...localGenerations.map(g => g.order || 0)) + 1
+			: 1;
+
+		const newGenItem = {
+			id: `gen_${valueNum}`,
+			value: valueNum,
+			name: newGenName.trim(),
+			order: nextOrder
+		};
+
+		setLocalGenerations(prev => [...prev, newGenItem]);
+		setNewGenName('');
+		setNewGenValue('');
+		showToast(`"${newGenItem.name}" 기수가 목록 하단에 추가되었습니다. 저장 버튼을 누르면 DB에 적용됩니다.`, 'info');
+	};
+
 	const handleSaveGenerations = async () => {
 		setGenSaving(true);
 		try {
@@ -430,6 +489,35 @@ const AdminDashboard = ({ projects, onBackToGallery, showToast }) => {
 			setPwError('오류가 발생했습니다. 다시 시도해주세요.');
 		} finally {
 			setPwChanging(false);
+		}
+	};
+
+	const handleChangeAdminPassword = async (e) => {
+		e.preventDefault();
+		setAdminPwError('');
+		if (newAdminPw.length < 4) {
+			setAdminPwError('새 비밀번호는 최소 4자 이상이어야 합니다.');
+			return;
+		}
+		if (newAdminPw !== confirmAdminPw) {
+			setAdminPwError('새 비밀번호와 확인 비밀번호가 일치하지 않습니다.');
+			return;
+		}
+		setAdminPwChanging(true);
+		try {
+			const result = await updateAdminPassword(currentAdminPw, newAdminPw);
+			if (result.success) {
+				showToast('관리자 비밀번호가 변경되었습니다.', 'success');
+				setCurrentAdminPw('');
+				setNewAdminPw('');
+				setConfirmAdminPw('');
+			} else {
+				setAdminPwError(result.error || '비밀번호 변경에 실패했습니다.');
+			}
+		} catch (error) {
+			setAdminPwError('오류가 발생했습니다. 다시 시도해주세요.');
+		} finally {
+			setAdminPwChanging(false);
 		}
 	};
 
@@ -814,6 +902,40 @@ const AdminDashboard = ({ projects, onBackToGallery, showToast }) => {
 						</button>
 					</div>
 				))}
+
+				{/* 기수 추가 폼 */}
+				<div className="flex flex-wrap items-center gap-3 bg-blue-50/30 dark:bg-blue-955/10 rounded-xl px-4 py-3 border border-dashed border-blue-200 dark:border-blue-900/30">
+					<div className="flex-1 min-w-[150px]">
+						<label className="block text-[11px] font-bold text-gray-400 mb-1">기수 이름</label>
+						<input
+							type="text"
+							placeholder="예: 5기 AI 해커톤"
+							value={newGenName}
+							onChange={(e) => setNewGenName(e.target.value)}
+							className="w-full px-3 py-2 text-xs border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400"
+						/>
+					</div>
+					<div className="w-24">
+						<label className="block text-[11px] font-bold text-gray-400 mb-1">기수 숫자</label>
+						<input
+							type="number"
+							placeholder="예: 5"
+							value={newGenValue}
+							onChange={(e) => setNewGenValue(e.target.value)}
+							className="w-full px-3 py-2 text-xs border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400"
+						/>
+					</div>
+					<div className="pt-5">
+						<button
+							type="button"
+							onClick={handleAddGenerationClick}
+							className="flex items-center justify-center gap-1.5 px-4 py-2 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-colors h-[34px] flex-shrink-0"
+						>
+							<Plus className="w-3.5 h-3.5" />
+							<span>기수 추가</span>
+						</button>
+					</div>
+				</div>
 			</div>
 			<div className="flex justify-end pt-4 border-t border-gray-100 dark:border-gray-700">
 				<button
@@ -829,65 +951,130 @@ const AdminDashboard = ({ projects, onBackToGallery, showToast }) => {
 	);
 
 	const renderPasswordView = () => (
-		<div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm p-6 space-y-4">
-			<div>
-				<h3 className="text-sm font-black text-gray-900 dark:text-white flex items-center gap-2">
-					<KeyRound className="w-4 h-4 text-amber-500" />
-					<span>입장 비밀번호 수정</span>
-				</h3>
-				<p className="text-xs text-gray-500 dark:text-gray-400 mt-1 font-medium">현재 마스터 비밀번호를 입력하고 새로운 비밀번호(최소 4자)로 변경합니다.</p>
+		<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+			{/* 입장 비밀번호 변경 카드 */}
+			<div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm p-6 space-y-4">
+				<div>
+					<h3 className="text-sm font-black text-gray-900 dark:text-white flex items-center gap-2">
+						<KeyRound className="w-4 h-4 text-amber-500" />
+						<span>갤러리 입장 비밀번호 수정</span>
+					</h3>
+					<p className="text-xs text-gray-500 dark:text-gray-400 mt-1 font-medium">수강생들이 갤러리 및 투표 보드에 최초 진입할 때 쓰는 비밀번호를 변경합니다.</p>
+				</div>
+				<form onSubmit={handleChangeSystemPassword} className="space-y-4 pt-2">
+					<div>
+						<label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">현재 입장 비밀번호</label>
+						<input
+							type="password"
+							value={currentPw}
+							onChange={(e) => { setCurrentPw(e.target.value); setPwError(''); }}
+							placeholder="현재 입장 비밀번호 입력"
+							required
+							className="w-full px-3.5 py-2.5 text-sm border border-gray-200 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400"
+						/>
+					</div>
+					<div>
+						<label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">새 입장 비밀번호</label>
+						<input
+							type="password"
+							value={newPw}
+							onChange={(e) => { setNewPw(e.target.value); setPwError(''); }}
+							placeholder="새 비밀번호 입력 (최소 4자)"
+							required
+							className="w-full px-3.5 py-2.5 text-sm border border-gray-200 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400"
+						/>
+					</div>
+					<div>
+						<label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">새 입장 비밀번호 확인</label>
+						<input
+							type="password"
+							value={confirmPw}
+							onChange={(e) => { setConfirmPw(e.target.value); setPwError(''); }}
+							placeholder="새 비밀번호 다시 입력"
+							required
+							className="w-full px-3.5 py-2.5 text-sm border border-gray-200 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400"
+						/>
+					</div>
+					{pwError && (
+						<p className="text-xs text-red-500 flex items-center gap-1.5 bg-red-50 dark:bg-red-900/10 px-3 py-2 rounded-lg">
+							<AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+							<span>{pwError}</span>
+						</p>
+					)}
+					<div className="flex justify-end pt-2 border-t border-gray-100 dark:border-gray-700">
+						<button
+							type="submit"
+							disabled={pwChanging}
+							className="flex items-center gap-1.5 px-4 py-2 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-colors"
+						>
+							{pwChanging ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <KeyRound className="w-3.5 h-3.5" />}
+							<span>{pwChanging ? '변경 중...' : '입장 비밀번호 변경'}</span>
+						</button>
+					</div>
+				</form>
 			</div>
-			<form onSubmit={handleChangeSystemPassword} className="space-y-4 max-w-md pt-2">
+
+			{/* 관리자 비밀번호 변경 카드 */}
+			<div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm p-6 space-y-4">
 				<div>
-					<label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">현재 비밀번호</label>
-					<input
-						type="password"
-						value={currentPw}
-						onChange={(e) => { setCurrentPw(e.target.value); setPwError(''); }}
-						placeholder="현재 비밀번호 입력"
-						required
-						className="w-full px-3.5 py-2.5 text-sm border border-gray-200 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400"
-					/>
+					<h3 className="text-sm font-black text-gray-900 dark:text-white flex items-center gap-2">
+						<Shield className="w-4 h-4 text-purple-500" />
+						<span>관리자 마스터 비밀번호 수정</span>
+					</h3>
+					<p className="text-xs text-gray-500 dark:text-gray-400 mt-1 font-medium">관리자 대시보드 로그인 시 사용하는 비밀번호를 변경합니다. (더 긴 강력한 패스워드 권장)</p>
 				</div>
-				<div>
-					<label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">새 비밀번호</label>
-					<input
-						type="password"
-						value={newPw}
-						onChange={(e) => { setNewPw(e.target.value); setPwError(''); }}
-						placeholder="새 비밀번호 입력 (최소 4자)"
-						required
-						className="w-full px-3.5 py-2.5 text-sm border border-gray-200 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400"
-					/>
-				</div>
-				<div>
-					<label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">새 비밀번호 확인</label>
-					<input
-						type="password"
-						value={confirmPw}
-						onChange={(e) => { setConfirmPw(e.target.value); setPwError(''); }}
-						placeholder="새 비밀번호 다시 입력"
-						required
-						className="w-full px-3.5 py-2.5 text-sm border border-gray-200 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400"
-					/>
-				</div>
-				{pwError && (
-					<p className="text-xs text-red-500 flex items-center gap-1.5 bg-red-50 dark:bg-red-900/10 px-3 py-2 rounded-lg">
-						<AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
-						<span>{pwError}</span>
-					</p>
-				)}
-				<div className="flex justify-end pt-2 border-t border-gray-100 dark:border-gray-700">
-					<button
-						type="submit"
-						disabled={pwChanging}
-						className="flex items-center gap-1.5 px-4 py-2 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-colors"
-					>
-						{pwChanging ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <KeyRound className="w-3.5 h-3.5" />}
-						<span>{pwChanging ? '변경 중...' : '비밀번호 변경'}</span>
-					</button>
-				</div>
-			</form>
+				<form onSubmit={handleChangeAdminPassword} className="space-y-4 pt-2">
+					<div>
+						<label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">현재 관리자 비밀번호</label>
+						<input
+							type="password"
+							value={currentAdminPw}
+							onChange={(e) => { setCurrentAdminPw(e.target.value); setAdminPwError(''); }}
+							placeholder="현재 관리자 비밀번호 입력"
+							required
+							className="w-full px-3.5 py-2.5 text-sm border border-gray-200 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white outline-none focus:border-purple-400 focus:ring-1 focus:ring-purple-400"
+						/>
+					</div>
+					<div>
+						<label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">새 관리자 비밀번호</label>
+						<input
+							type="password"
+							value={newAdminPw}
+							onChange={(e) => { setNewAdminPw(e.target.value); setAdminPwError(''); }}
+							placeholder="새 관리자 비밀번호 입력 (최소 4자)"
+							required
+							className="w-full px-3.5 py-2.5 text-sm border border-gray-200 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white outline-none focus:border-purple-400 focus:ring-1 focus:ring-purple-400"
+						/>
+					</div>
+					<div>
+						<label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">새 관리자 비밀번호 확인</label>
+						<input
+							type="password"
+							value={confirmAdminPw}
+							onChange={(e) => { setConfirmAdminPw(e.target.value); setAdminPwError(''); }}
+							placeholder="새 관리자 비밀번호 다시 입력"
+							required
+							className="w-full px-3.5 py-2.5 text-sm border border-gray-200 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white outline-none focus:border-purple-400 focus:ring-1 focus:ring-purple-400"
+						/>
+					</div>
+					{adminPwError && (
+						<p className="text-xs text-red-500 flex items-center gap-1.5 bg-red-50 dark:bg-red-900/10 px-3 py-2 rounded-lg">
+							<AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+							<span>{adminPwError}</span>
+						</p>
+					)}
+					<div className="flex justify-end pt-2 border-t border-gray-100 dark:border-gray-700">
+						<button
+							type="submit"
+							disabled={adminPwChanging}
+							className="flex items-center gap-1.5 px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-colors"
+						>
+							{adminPwChanging ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Shield className="w-3.5 h-3.5" />}
+							<span>{adminPwChanging ? '변경 중...' : '관리자 비밀번호 변경'}</span>
+						</button>
+					</div>
+				</form>
+			</div>
 		</div>
 	);
 
