@@ -765,8 +765,8 @@ const AdminDashboard = ({ projects, onBackToGallery, showToast }) => {
 	const renderTabs = () => {
 		const tabs = [
 			{ key: 'menu', label: '어드민 홈' },
-			{ key: 'generations', label: '기수 수정' },
-			{ key: 'password', label: '입장 비밀번호' },
+			{ key: 'generations', label: '기수 관리' },
+			{ key: 'password', label: '비밀번호 설정' },
 			{ key: 'projects', label: '프로젝트 관리' },
 			{ key: 'voting', label: '투표 설정' },
 			{ key: 'dashboard', label: '심층 투표 분석' },
@@ -1489,8 +1489,8 @@ const AdminDashboard = ({ projects, onBackToGallery, showToast }) => {
 							<span>프로젝트별 ELO 상대 전적</span>
 						</h3>
 						<p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
-							{projectViewMode === 'list' 
-								? "프로젝트 ELO 순위 리스트와 개별 프로젝트 클릭 시 상대 전적(H2H)을 상세히 분석합니다." 
+							{projectViewMode === 'list'
+								? "프로젝트 ELO 순위 리스트와 개별 프로젝트 클릭 시 상대 전적(H2H)을 상세히 분석합니다."
 								: "모든 프로젝트 간 1:1 대전 승률을 한눈에 볼 수 있는 매트릭스 크로스 히트맵입니다."}
 						</p>
 					</div>
@@ -1536,7 +1536,7 @@ const AdminDashboard = ({ projects, onBackToGallery, showToast }) => {
 									</thead>
 									<tbody className="divide-y divide-gray-200 dark:divide-gray-750">
 										{matchupMatrix.projects.map((p, idx) => (
-											<tr 
+											<tr
 												key={p.id}
 												onClick={() => setSelectedProject(p)}
 												className={`cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors ${selectedProject?.id === p.id ? 'bg-kakao-yellow/5 dark:bg-kakao-yellow/2.5' : ''}`}
@@ -1609,8 +1609,8 @@ const AdminDashboard = ({ projects, onBackToGallery, showToast }) => {
 										<tr>
 											<th className="border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 px-3 py-2 text-left text-xs font-bold text-gray-500 dark:text-gray-400 min-w-[120px] max-w-[120px] truncate">프로젝트</th>
 											{matchupMatrix.projects.map(p => (
-												<th 
-													key={p.id} 
+												<th
+													key={p.id}
 													className="border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 px-1 py-2 text-center text-[11px] font-bold text-gray-500 dark:text-gray-400 min-w-[55px] max-w-[55px] truncate"
 													title={p.title}
 												>
@@ -1630,7 +1630,7 @@ const AdminDashboard = ({ projects, onBackToGallery, showToast }) => {
 														const cell = matchupMatrix.data[pRow.id]?.[pCol.id];
 														if (!cell || cell.self) {
 															return (
-																<td 
+																<td
 																	key={pCol.id}
 																	className="border border-gray-200 dark:border-gray-700 text-center text-gray-300 dark:text-gray-600 px-1 py-2 font-mono text-xs bg-gray-50 dark:bg-gray-800/40"
 																>
@@ -1650,7 +1650,7 @@ const AdminDashboard = ({ projects, onBackToGallery, showToast }) => {
 															colorClass = "bg-rose-50 text-rose-700 dark:bg-rose-955/20 dark:text-rose-455";
 														}
 														return (
-															<td 
+															<td
 																key={pCol.id}
 																className={`border border-gray-200 dark:border-gray-700 text-center px-1 py-1 font-bold ${colorClass}`}
 																title={`${pRow.title} vs ${pCol.title}\n승률: ${wr}%\n전적: ${cell.wins}승 ${cell.losses}패 (총 ${cell.total}회)`}
