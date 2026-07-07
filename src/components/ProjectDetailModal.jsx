@@ -2,9 +2,9 @@ import React, { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
-import { X, Send, Trash2, Calendar, User, Edit2, Check, XCircle } from 'lucide-react';
+import { X, Send, Trash2, Calendar, User, Edit2, Check, XCircle, Heart } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { addComment, subscribeToComments, deleteComment, updateComment, verifyCommentPassword, subscribeToDeployments, addDeploymentLog, deleteDeploymentLog, verifyProjectPassword, getDeploymentCount, updateDeploymentLog } from '../lib/firebase';
+import { addComment, subscribeToComments, deleteComment, updateComment, verifyCommentPassword, subscribeToDeployments, addDeploymentLog, deleteDeploymentLog, verifyProjectPassword, getDeploymentCount, updateDeploymentLog, toggleLike } from '../lib/firebase';
 import PasswordModal from './PasswordModal';
 import ConfirmModal from './ConfirmModal';
 import { checkProfanity } from '../lib/profanityFilter';
@@ -64,6 +64,27 @@ const ProjectDetailModal = ({ project, isOpen, onClose, onCommentSuccess, showTo
 
 	// Version Regex: strict Major.Minor.Patch (e.g. 1.0.0, 2.12.3)
 	const VERSION_REGEX = /^\d+\.\d+\.\d+$/;
+
+	const [isLiking, setIsLiking] = useState(false);
+	const sessionId = localStorage.getItem('hackathon_session_id');
+	const isLiked = project?.likedBy?.includes(sessionId);
+
+	const handleLike = async (e) => {
+		if (e) {
+			e.preventDefault();
+			e.stopPropagation();
+		}
+		if (isLiking || !project) return;
+
+		setIsLiking(true);
+		try {
+			await toggleLike(project.id, sessionId);
+		} catch (error) {
+			console.error("Error toggling like:", error);
+		} finally {
+			setIsLiking(false);
+		}
+	};
 
 	useEffect(() => {
 		if (isOpen && project) {
@@ -573,6 +594,27 @@ const ProjectDetailModal = ({ project, isOpen, onClose, onCommentSuccess, showTo
 												</button>
 											)}
 										</div>
+									</div>
+
+									{/* Likes Section */}
+									<div className="p-6 border-b border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 flex flex-col items-center justify-center gap-3">
+										<p className="text-sm font-bold text-gray-500 dark:text-gray-400">
+											이 프로젝트가 마음에 드셨나요? 응원의 좋아요를 눌러주세요!
+										</p>
+										<motion.button
+											whileTap={{ scale: 0.95 }}
+											whileHover={{ scale: 1.02 }}
+											onClick={handleLike}
+											disabled={isLiking}
+											className={`flex items-center justify-center gap-2.5 px-8 py-3.5 rounded-2xl text-base font-extrabold transition-all border shadow-sm w-full max-w-sm ${
+												isLiked
+													? 'bg-red-50 dark:bg-red-900/20 text-red-500 border-red-200 dark:border-red-900/30'
+													: 'bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
+											}`}
+										>
+											<Heart className={`w-6 h-6 transition-transform duration-300 ${isLiked ? 'fill-current text-red-500 scale-110' : 'text-gray-400 dark:text-gray-500'}`} />
+											<span>좋아요 {project?.likes || 0}</span>
+										</motion.button>
 									</div>
 
 									{/* Bottom: Comments */}
