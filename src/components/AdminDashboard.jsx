@@ -6,7 +6,7 @@ import {
 	Settings, Edit2, Trash2, Save, X, KeyRound, ChevronUp, ChevronDown,
 	Vote, ToggleLeft, ToggleRight, Plus
 } from 'lucide-react';
-import * as XLSX from 'xlsx';
+
 import {
 	getStudentsByGeneration,
 	getMatchupsByGeneration,
@@ -617,6 +617,7 @@ const AdminDashboard = ({ projects, onBackToGallery, showToast }) => {
 		try {
 			// Fetch votes list on demand for excel export
 			const votesList = await getVotesByGeneration(selectedGen);
+			const XLSX = await import('xlsx');
 			const wb = XLSX.utils.book_new();
 
 			// 1. Projects statistics

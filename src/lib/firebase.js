@@ -1,6 +1,5 @@
 import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
-import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
 const firebaseConfig = {
 	apiKey: "AIzaSyCm0Bul1xpqu6SejQyEJKlvRtarWSc7Jv0",
@@ -15,7 +14,23 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
-export const storage = getStorage(app);
+
+let storageInstance = null;
+const getStorageInstance = async () => {
+	if (!storageInstance) {
+		const { getStorage } = await import("firebase/storage");
+		storageInstance = getStorage(app);
+	}
+	return storageInstance;
+};
+
+const uploadToStorage = async (path, thumbBlob) => {
+	const { ref, uploadBytes, getDownloadURL } = await import("firebase/storage");
+	const store = await getStorageInstance();
+	const storageRef = ref(store, path);
+	await uploadBytes(storageRef, thumbBlob, { contentType: thumbBlob.type });
+	return await getDownloadURL(storageRef);
+};
 
 /**
  * 외부 이미지 URL을 fetch → Blob URL 변환 → Canvas 리사이즈 후
@@ -108,10 +123,7 @@ export const uploadThumbnailFromUrl = async (imageUrl, projectId) => {
 
 		const ext        = thumbBlob.type === 'image/webp' ? 'webp' : 'jpg';
 		const path       = `thumbnails/${projectId}/${Date.now()}.${ext}`;
-		const storageRef = ref(storage, path);
-
-		await uploadBytes(storageRef, thumbBlob, { contentType: thumbBlob.type });
-		return await getDownloadURL(storageRef);
+		return await uploadToStorage(path, thumbBlob);
 	} catch (error) {
 		console.warn('썸네일 업로드 실패 (원본 URL 유지):', error.message);
 		return null;
@@ -169,10 +181,7 @@ export const uploadThumbnailFromFile = async (file, projectId) => {
 
 		const ext        = thumbBlob.type === 'image/webp' ? 'webp' : 'jpg';
 		const path       = `thumbnails/${projectId}/${Date.now()}.${ext}`;
-		const storageRef = ref(storage, path);
-
-		await uploadBytes(storageRef, thumbBlob, { contentType: thumbBlob.type });
-		return await getDownloadURL(storageRef);
+		return await uploadToStorage(path, thumbBlob);
 	} catch (error) {
 		console.warn('파일 썸네일 업로드 실패:', error.message);
 		return null;
@@ -753,8 +762,8 @@ export const seedTestStudents = async () => {
 	}
 };
 
-// Auto seed
-seedTestStudents();
+// Auto seed disabled for optimization
+// seedTestStudents();
 
 export const submitVote = async (voterEmail, projectA, projectB, winner, generation) => {
 	try {
