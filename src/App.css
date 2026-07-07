@@ -40,3 +40,8 @@
 .read-the-docs {
   color: #888;
 }
+
+/* 다크모드 input 달력 아이콘 반전 (흰색으로 표시) */
+.dark input::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+}
