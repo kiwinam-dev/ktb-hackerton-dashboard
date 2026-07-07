@@ -427,7 +427,7 @@ const AdminDashboard = ({ projects, onBackToGallery, showToast }) => {
 		setGenSaving(true);
 		try {
 			for (const gen of localGenerations) {
-				await updateGeneration(gen.id, { name: gen.name, order: gen.order, value: gen.value });
+				await updateGeneration(gen.id, { id: gen.id, name: gen.name, order: gen.order, value: gen.value });
 			}
 			const updated = await getGenerations();
 			setGenerations(updated);

@@ -907,7 +907,14 @@ export const getGenerations = async () => {
 			}
 			return defaults.sort((a, b) => a.order - b.order);
 		}
-		return snap.docs.map(doc => doc.data()).sort((a, b) => a.order - b.order);
+		return snap.docs.map(doc => {
+			const data = doc.data();
+			return {
+				id: doc.id,
+				...data,
+				order: data.order !== undefined ? Number(data.order) : 999
+			};
+		}).sort((a, b) => a.order - b.order);
 	} catch (error) {
 		console.error("Error getting generations:", error);
 		return [
