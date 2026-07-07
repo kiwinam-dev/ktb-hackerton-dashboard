@@ -959,6 +959,51 @@ export const updateSystemPassword = async (currentPassword, newPassword) => {
 	}
 };
 
+// System Settings (Admin Master Password)
+export const verifyAdminPassword = async (inputPassword) => {
+	try {
+		const docRef = doc(db, "settings", "system");
+		const docSnap = await getDoc(docRef);
+		const inputHash = await hashPassword(inputPassword);
+
+		if (!docSnap.exists()) {
+			// Initialize with default admin password "1234" if not exists
+			const defaultHash = await hashPassword("1234");
+			await setDoc(docRef, { adminPassword: defaultHash }, { merge: true });
+			return inputPassword === "1234";
+		}
+
+		const data = docSnap.data();
+		// If adminPassword does not exist yet (migration phase), set as default "1234"
+		if (!data.adminPassword) {
+			const defaultHash = await hashPassword("1234");
+			await setDoc(docRef, { adminPassword: defaultHash }, { merge: true });
+			return inputPassword === "1234";
+		}
+
+		return data.adminPassword === inputHash;
+	} catch (error) {
+		console.error("Admin password check error:", error);
+		return false;
+	}
+};
+
+export const updateAdminPassword = async (currentPassword, newPassword) => {
+	try {
+		const isValid = await verifyAdminPassword(currentPassword);
+		if (!isValid) {
+			return { success: false, error: "현재 비밀번호가 일치하지 않습니다." };
+		}
+		const newHash = await hashPassword(newPassword);
+		const docRef = doc(db, "settings", "system");
+		await setDoc(docRef, { adminPassword: newHash }, { merge: true });
+		return { success: true };
+	} catch (error) {
+		console.error("Error updating admin password:", error);
+		return { success: false, error: "비밀번호 변경 중 오류가 발생했습니다." };
+	}
+};
+
 export const adminDeleteProject = async (projectId) => {
 	try {
 		await deleteDoc(doc(db, "projects", projectId));
