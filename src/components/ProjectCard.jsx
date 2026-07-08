@@ -4,7 +4,7 @@ import { ExternalLink, Edit2, Heart, MessageCircle } from 'lucide-react';
 import { toggleLike } from '../lib/firebase';
 import ImageWithLoader from './ImageWithLoader';
 
-const ProjectCard = ({ project, onEdit, onClick }) => {
+const ProjectCard = ({ project, onEdit, onClick, students = [] }) => {
 	const [isLiking, setIsLiking] = useState(false);
 	// const [commentCount, setCommentCount] = useState(0); // Removing local state
 	const sessionId = localStorage.getItem('hackathon_session_id');
@@ -68,7 +68,7 @@ const ProjectCard = ({ project, onEdit, onClick }) => {
 			animate={{ opacity: 1, y: 0 }}
 			transition={{ duration: 0.3 }}
 			onClick={handleCardClick}
-			className="bg-white dark:bg-gray-800 rounded-xl shadow-md hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 overflow-hidden border border-gray-100 dark:border-gray-700 flex flex-col h-[430px] group relative cursor-pointer ring-1 ring-gray-100 dark:ring-gray-700 will-change-transform"
+			className="bg-white dark:bg-gray-800 rounded-xl shadow-md hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 overflow-hidden border border-gray-100 dark:border-gray-700 flex flex-col h-[475px] group relative cursor-pointer ring-1 ring-gray-100 dark:ring-gray-700 will-change-transform"
 		>
 			<div className="relative h-44 overflow-hidden bg-gray-100 dark:bg-gray-700 flex-shrink-0">
 				{(project.thumbnailUrl || project.imageUrl) ? (
@@ -115,7 +115,7 @@ const ProjectCard = ({ project, onEdit, onClick }) => {
 
 			<div className="p-4 flex-1 flex flex-col overflow-hidden relative">
 				{/* Tags - Truncate long tags */}
-				<div className="h-6 mb-2 overflow-hidden flex flex-wrap gap-1.5">
+				<div className="flex flex-wrap gap-1.5 mb-2.5">
 					{project.tags && project.tags.map((tag, idx) => (
 						<span key={idx} className={`text-[10px] px-2 py-0.5 rounded-full border font-medium truncate max-w-[100px] inline-block ${getTagStyle(tag)}`}>
 							{tag}
@@ -123,19 +123,58 @@ const ProjectCard = ({ project, onEdit, onClick }) => {
 					))}
 				</div>
 
-				{/* Members - Force 1 line */}
-				<div className="h-5 mb-2 overflow-hidden text-xs text-gray-500 dark:text-gray-400 flex flex-nowrap gap-1 items-center">
-					{project.members && project.members.map((member, idx) => (
-						<span key={idx} className="bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded whitespace-nowrap">
-							{member}
-						</span>
-					))}
-				</div>
+				{/* Members - Grouped by Course */}
+				{(() => {
+					const grouped = { FS: [], AI: [], CL: [], ETC: [] };
+					if (project.members) {
+						project.members.forEach(member => {
+							const student = students.find(s => s.name === member);
+							const displayName = typeof member === 'string' && member.split('_').length >= 3 ? member.split('_')[2] : member;
+							if (student) {
+								if (student.course === '풀스택') grouped.FS.push(displayName);
+								else if (student.course === '인공지능') grouped.AI.push(displayName);
+								else if (student.course === '클라우드') grouped.CL.push(displayName);
+								else grouped.ETC.push(displayName);
+							} else {
+								if (member.includes('풀스택') || member.includes('FS')) grouped.FS.push(displayName);
+								else if (member.includes('인공지능') || member.includes('AI')) grouped.AI.push(displayName);
+								else if (member.includes('클라우드') || member.includes('CL')) grouped.CL.push(displayName);
+								else grouped.ETC.push(displayName);
+							}
+						});
+					}
+					return (
+						<div className="mb-2 text-[10px] text-gray-500 dark:text-gray-400 flex flex-col gap-0.5 min-h-[20px]">
+							{Object.entries(grouped).map(([course, names]) => {
+								if (names.length === 0) return null;
+								let badgeColor = "bg-gray-150 text-gray-700 dark:bg-gray-800 dark:text-gray-300";
+								if (course === 'FS') badgeColor = "bg-blue-50 text-blue-700 dark:bg-blue-950/20 dark:text-blue-300";
+								else if (course === 'AI') badgeColor = "bg-purple-50 text-purple-700 dark:bg-purple-950/20 dark:text-purple-300";
+								else if (course === 'CL') badgeColor = "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-300";
+
+								return (
+									<div key={course} className="flex items-center gap-1.5 overflow-hidden py-0.5">
+										<span className={`text-[9px] font-extrabold px-1 rounded-sm flex-shrink-0 uppercase tracking-wide border dark:border-transparent ${
+											course === 'FS' ? 'border-blue-200' :
+											course === 'AI' ? 'border-purple-200' :
+											course === 'CL' ? 'border-emerald-200' : 'border-gray-200'
+										} ${badgeColor}`}>
+											{course}
+										</span>
+										<span className="truncate font-medium">
+											{names.join(', ')}
+										</span>
+									</div>
+								);
+							})}
+						</div>
+					);
+				})()}
 
 				<h3 className="text-lg font-bold text-gray-900 dark:text-white mb-1 line-clamp-1 group-hover:text-kakao-black dark:group-hover:text-kakao-yellow transition-colors">
 					{project.title}
 				</h3>
-				<p className="text-gray-600 dark:text-gray-400 text-sm mb-auto line-clamp-1 h-5">
+				<p className="text-gray-600 dark:text-gray-400 text-sm mb-4 line-clamp-1 h-5">
 					{project.description}
 				</p>
 

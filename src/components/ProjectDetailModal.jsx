@@ -427,11 +427,14 @@ const ProjectDetailModal = ({ project, isOpen, onClose, onCommentSuccess, showTo
 												<User className="w-4 h-4" /> 팀원
 											</h4>
 											<div className="flex flex-wrap gap-2">
-												{project.members && project.members.map((m, i) => (
-													<span key={i} className="text-sm bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-1 rounded-md">
-														{m}
-													</span>
-												))}
+												{project.members && project.members.map((m, i) => {
+													const displayName = typeof m === 'string' && m.split('_').length >= 3 ? m.split('_')[2] : m;
+													return (
+														<span key={i} className="text-sm bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-1 rounded-md">
+															{displayName}
+														</span>
+													);
+												})}
 											</div>
 										</div>
 
