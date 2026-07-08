@@ -2,15 +2,19 @@
 """
 Excel 학생 명단을 Cloud Firestore의 students 컬렉션에 일괄 등록합니다.
 
-입력 엑셀 기준 열:
+입력 Excel 기준 열:
 - A열: ID(순번)
 - B열: 과정명
 - C열: 국문명
+- D열: 영문명
 - H열: 생년월일
 
-문서 ID 형식:
-{generation}_{course}_{name}_{YYMMDD}
-예: 3_풀스택_가한솔_990824
+Firestore 저장 규칙:
+- name 필드: 영문명(국문명)
+  예: charlie.park(박천명)
+- 문서 ID: 기존 호환성을 위해 국문명을 사용
+  {generation}_{course}_{korean_name}_{YYMMDD}
+  예: 3_풀스택_가한솔_990824
 
 실행 예시:
 1) 미리보기만 실행(기본값, Firestore에 쓰지 않음)
@@ -41,7 +45,6 @@ import sys
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Optional
-
 # pyrefly: ignore [missing-import]
 import firebase_admin
 # pyrefly: ignore [missing-import]
@@ -51,7 +54,8 @@ from openpyxl import load_workbook
 
 COL_ID = 1          # A: 순번
 COL_COURSE = 2      # B: 과정명
-COL_NAME = 3        # C: 국문명
+COL_KOREAN_NAME = 3 # C: 국문명
+COL_ENGLISH_NAME = 4 # D: 영문명
 COL_BIRTHDATE = 8   # H: 생년월일
 
 COLLECTION_NAME = "students"
@@ -62,11 +66,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Excel 학생 명단을 Firestore students 컬렉션에 일괄 등록합니다."
     )
-    parser.add_argument(
-        "--excel",
-        required=True,
-        help="입력 Excel 파일 경로(.xlsx)",
-    )
+    parser.add_argument("--excel", required=True, help="입력 Excel 파일 경로(.xlsx)")
     parser.add_argument(
         "--service-account",
         required=True,
@@ -107,11 +107,13 @@ def as_clean_text(value: Any) -> str:
     return str(value).strip()
 
 
+def format_display_name(english_name: str, korean_name: str) -> str:
+    """Firestore에 표시할 학생 이름을 영문명(국문명) 형식으로 만듭니다."""
+    return f"{english_name}({korean_name})"
+
+
 def parse_generation(sheet_name: str) -> str:
-    """
-    시트명에서 기수를 추출합니다.
-    예: P-3기, 3기, AI_12기 -> 3, 3, 12
-    """
+    """시트명에서 기수를 추출합니다. 예: P-3기, 3기, AI_12기 -> 3, 3, 12"""
     match = re.search(r"(\d+)\s*기", sheet_name)
     if not match:
         raise ValueError(
@@ -122,16 +124,7 @@ def parse_generation(sheet_name: str) -> str:
 
 
 def normalize_birthdate(value: Any) -> str:
-    """
-    생년월일을 YYMMDD 형식으로 정규화합니다.
-
-    허용 예:
-    - 1999.08.24
-    - 1999-08-24
-    - 19990824
-    - 990824
-    - Excel 날짜 셀
-    """
+    """생년월일을 YYMMDD 형식으로 정규화합니다."""
     if isinstance(value, datetime):
         return value.strftime("%y%m%d")
     if isinstance(value, date):
@@ -151,7 +144,6 @@ def normalize_birthdate(value: Any) -> str:
         return parsed.strftime("%y%m%d")
 
     if len(digits) == 6:
-        # 이미 YYMMDD로 입력된 경우로 처리합니다.
         try:
             datetime.strptime(digits, "%y%m%d")
         except ValueError as exc:
@@ -164,12 +156,14 @@ def normalize_birthdate(value: Any) -> str:
     )
 
 
-def build_document_id(generation: str, course: str, name: str, birthdate: str) -> str:
+def build_document_id(generation: str, course: str, korean_name: str, birthdate: str) -> str:
     """
     Firestore 문서 ID를 생성합니다.
-    Firestore 문서 ID에 사용할 수 없는 '/' 문자는 '_'로 치환합니다.
+
+    문서 ID는 기존 데이터와의 호환성과 안정적인 식별을 위해 국문명을 사용합니다.
+    화면에 표시되는 name 필드만 영문명(국문명)으로 저장합니다.
     """
-    raw = f"{generation}_{course}_{name}_{birthdate}"
+    raw = f"{generation}_{course}_{korean_name}_{birthdate}"
     return raw.replace("/", "_").strip()
 
 
@@ -178,7 +172,7 @@ def read_students(
     sheet_name: Optional[str],
     forced_generation: Optional[str],
     forced_course: Optional[str],
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]], str, str]:
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], str, int]:
     """Excel을 읽어 Firestore 문서 목록과 오류 목록을 반환합니다."""
     workbook = load_workbook(excel_path, data_only=True, read_only=True)
 
@@ -197,38 +191,36 @@ def read_students(
     errors: list[dict[str, Any]] = []
     seen_document_ids: set[str] = set()
 
-    for row_number, row in enumerate(
-        worksheet.iter_rows(min_row=2, values_only=True),
-        start=2,
-    ):
+    for row_number, row in enumerate(worksheet.iter_rows(min_row=2, values_only=True), start=2):
         excel_id = as_clean_text(row[COL_ID - 1] if len(row) >= COL_ID else None)
-        source_course = as_clean_text(
-            row[COL_COURSE - 1] if len(row) >= COL_COURSE else None
-        )
-        name = as_clean_text(row[COL_NAME - 1] if len(row) >= COL_NAME else None)
+        source_course = as_clean_text(row[COL_COURSE - 1] if len(row) >= COL_COURSE else None)
+        korean_name = as_clean_text(row[COL_KOREAN_NAME - 1] if len(row) >= COL_KOREAN_NAME else None)
+        english_name = as_clean_text(row[COL_ENGLISH_NAME - 1] if len(row) >= COL_ENGLISH_NAME else None)
         birthdate_value = row[COL_BIRTHDATE - 1] if len(row) >= COL_BIRTHDATE else None
 
-        # 완전히 비어 있는 행은 무시합니다.
-        if not any([excel_id, source_course, name, as_clean_text(birthdate_value)]):
+        if not any([excel_id, source_course, korean_name, english_name, as_clean_text(birthdate_value)]):
             continue
 
         try:
             if not excel_id:
                 raise ValueError("A열 ID가 비어 있습니다.")
-            if not name:
+            if not korean_name:
                 raise ValueError("C열 국문명이 비어 있습니다.")
+            if not english_name:
+                raise ValueError("D열 영문명이 비어 있습니다.")
 
             course = forced_course.strip() if forced_course else source_course
             if not course:
                 raise ValueError("B열 과정명이 비어 있습니다.")
 
             birthdate = normalize_birthdate(birthdate_value)
-            document_id = build_document_id(generation, course, name, birthdate)
+            document_id = build_document_id(generation, course, korean_name, birthdate)
+            display_name = format_display_name(english_name, korean_name)
 
             if document_id in seen_document_ids:
                 raise ValueError(
                     f"중복 문서 ID입니다: {document_id}. "
-                    "같은 기수·과정·이름·생년월일 조합이 여러 행에 있습니다."
+                    "같은 기수·과정·국문명·생년월일 조합이 여러 행에 있습니다."
                 )
             seen_document_ids.add(document_id)
 
@@ -241,7 +233,7 @@ def read_students(
                         "generation": generation,
                         "id": document_id,
                         "isAdmin": False,
-                        "name": name,
+                        "name": display_name,
                     },
                 }
             )
@@ -251,7 +243,8 @@ def read_students(
                     "row": row_number,
                     "id": excel_id,
                     "course": source_course,
-                    "name": name,
+                    "korean_name": korean_name,
+                    "english_name": english_name,
                     "birthdate": as_clean_text(birthdate_value),
                     "reason": str(exc),
                 }
@@ -268,7 +261,7 @@ def save_errors_csv(errors: list[dict[str, Any]], output_path: Path) -> None:
     with output_path.open("w", encoding="utf-8-sig", newline="") as file:
         writer = csv.DictWriter(
             file,
-            fieldnames=["row", "id", "course", "name", "birthdate", "reason"],
+            fieldnames=["row", "id", "course", "korean_name", "english_name", "birthdate", "reason"],
         )
         writer.writeheader()
         writer.writerows(errors)
@@ -282,10 +275,7 @@ def initialize_firestore(service_account_path: Path):
 
 
 def write_students(db, students: list[dict[str, Any]]) -> int:
-    """
-    Firestore에 최대 500건 단위로 batch write 합니다.
-    동일한 document_id가 이미 존재하면 해당 문서를 동일 데이터로 덮어씁니다.
-    """
+    """Firestore에 최대 500건 단위로 batch write 합니다."""
     committed_count = 0
 
     for start in range(0, len(students), BATCH_LIMIT):
@@ -315,10 +305,7 @@ def main() -> int:
         return 1
 
     if not service_account_path.is_file():
-        print(
-            f"[오류] 서비스 계정 JSON 파일을 찾을 수 없습니다: {service_account_path}",
-            file=sys.stderr,
-        )
+        print(f"[오류] 서비스 계정 JSON 파일을 찾을 수 없습니다: {service_account_path}", file=sys.stderr)
         return 1
 
     try:
@@ -336,7 +323,7 @@ def main() -> int:
         save_errors_csv(errors, errors_csv_path)
         print(f"[주의] 검증 실패 {len(errors)}건: {errors_csv_path}")
 
-    print()
+    print() 
     print("===== 가져오기 미리보기 =====")
     print(f"시트: {sheet_name}")
     print(f"기수: {generation}")
@@ -355,7 +342,7 @@ def main() -> int:
         return 1
 
     if not args.commit:
-        print()
+        print() 
         print("[DRY RUN] Firestore에는 아직 저장하지 않았습니다.")
         print("실제 저장하려면 명령 끝에 --commit 옵션을 추가하세요.")
         return 0
@@ -367,7 +354,7 @@ def main() -> int:
         print(f"[오류] Firestore 저장 실패: {exc}", file=sys.stderr)
         return 1
 
-    print()
+    print() 
     print(f"[성공] students 컬렉션에 {committed_count}건을 저장했습니다.")
     return 0
 
