@@ -5,7 +5,7 @@ import Footer from './components/Footer';
 import ProjectList from './components/ProjectList';
 import ProjectCardSkeleton from './components/ProjectCardSkeleton';
 import Toast from './components/Toast';
-import { subscribeToProjects, verifyProjectPassword, getGenerations } from './lib/firebase';
+import { subscribeToProjects, verifyProjectPassword, getGenerations, getStudentsByGeneration } from './lib/firebase';
 import { AnimatePresence, motion } from 'framer-motion';
 
 // Lazy Load Modals
@@ -34,6 +34,7 @@ function App() {
   const [pendingEditProject, setPendingEditProject] = useState(null);
   const [selectedProject, setSelectedProject] = useState(null); // For detail modal
   const [projects, setProjects] = useState([]);
+  const [students, setStudents] = useState([]);
   // Initialize from localStorage or default to 'latest'
   const [sortBy, setSortBy] = useState(() => localStorage.getItem('project_sort_order') || 'latest');
 
@@ -141,6 +142,12 @@ function App() {
     });
   }, []);
 
+  useEffect(() => {
+    getStudentsByGeneration(selectedGeneration).then(list => {
+      setStudents(list);
+    });
+  }, [selectedGeneration]);
+
   const handleViewChange = useCallback((newView) => {
     setView(newView);
     if (newView === 'gallery') {
@@ -228,6 +235,7 @@ function App() {
                 projects={sortedProjects}
                 onEdit={handleEditClick}
                 onCardClick={setSelectedProject}
+                students={students}
               />
             )}
           </>
@@ -278,6 +286,7 @@ function App() {
           onSuccess={(msg) => showToast(msg)}
           defaultGeneration={selectedGeneration}
           generations={generations}
+          projects={projects}
         />
 
         <PasswordModal

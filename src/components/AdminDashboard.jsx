@@ -4,8 +4,9 @@ import {
 	Calendar, ChevronRight, RefreshCw, Shield, Lock,
 	Eye, Play, FileText, Check, AlertCircle, Download,
 	Settings, Edit2, Trash2, Save, X, KeyRound, ChevronUp, ChevronDown,
-	Vote, ToggleLeft, ToggleRight, Plus
+	Vote, ToggleLeft, ToggleRight, Plus, Upload
 } from 'lucide-react';
+import ImageWithLoader from './ImageWithLoader';
 
 import {
 	getStudentsByGeneration,
@@ -25,10 +26,21 @@ import {
 	getVotingSettings,
 	saveVotingSettings,
 	updateProject,
+	uploadThumbnailFromFile,
+	uploadThumbnailFromUrl,
 	db
 } from '../lib/firebase';
 
 const AdminDashboard = ({ projects, onBackToGallery, showToast }) => {
+	// Project Edit Image Upload & Course Tab State
+	const [projectEditImageFile, setProjectEditImageFile] = useState(null);
+	const [projectEditImagePreview, setProjectEditImagePreview] = useState('');
+	const [memberCourseTab, setMemberCourseTab] = useState('풀스택');
+	const [memberSearchQuery, setMemberSearchQuery] = useState('');
+	const fileInputRef = React.useRef(null);
+
+
+
 	// Auth State
 	const [isAuthorized, setIsAuthorized] = useState(() => {
 		return sessionStorage.getItem('ktb_admin_auth') === 'true';
@@ -85,6 +97,19 @@ const AdminDashboard = ({ projects, onBackToGallery, showToast }) => {
 	const [projectEditData, setProjectEditData] = useState({});
 	const [projectEditNewPw, setProjectEditNewPw] = useState('');
 	const [projectSaving, setProjectSaving] = useState(false);
+
+	const otherTeamsMembers = useMemo(() => {
+		if (!projectEditTarget) return new Set();
+		const set = new Set();
+		projects
+			.filter(p => (p.generation || 3) === selectedGen && p.id !== projectEditTarget.id)
+			.forEach(p => {
+				if (p.members) {
+					p.members.forEach(name => set.add(name));
+				}
+			});
+		return set;
+	}, [projects, selectedGen, projectEditTarget]);
 
 	// 4. 투표 관리
 	const [adminVotingSettings, setAdminVotingSettings] = useState({ isActive: false, generation: 4, startDate: '' });
@@ -492,6 +517,16 @@ const AdminDashboard = ({ projects, onBackToGallery, showToast }) => {
 		}
 	};
 
+	const clearProjectEditImages = () => {
+		if (projectEditImagePreview) URL.revokeObjectURL(projectEditImagePreview);
+		setProjectEditImageFile(null);
+		setProjectEditImagePreview('');
+		if (fileInputRef.current) fileInputRef.current.value = '';
+		setMemberSearchQuery('');
+	};
+
+
+
 	const handleChangeAdminPassword = async (e) => {
 		e.preventDefault();
 		setAdminPwError('');
@@ -530,16 +565,37 @@ const AdminDashboard = ({ projects, onBackToGallery, showToast }) => {
 			url: project.url || '',
 			tags: project.tags || [],
 			generation: project.generation || selectedGen,
-			members: project.members || []
+			members: project.members || [],
+			imageUrl: project.imageUrl || '',
+			thumbnailUrl: project.thumbnailUrl || ''
 		});
 		setProjectEditNewPw('');
+		setProjectEditImageFile(null);
+		setProjectEditImagePreview('');
+		setMemberSearchQuery('');
 	};
 
 	const handleSaveProjectEdit = async () => {
 		if (!projectEditTarget) return;
 		setProjectSaving(true);
 		try {
-			const result = await updateProject(projectEditTarget.id, projectEditData);
+			const submissionData = { ...projectEditData };
+			const projectId = projectEditTarget.id;
+
+			if (projectEditImageFile) {
+				const cdnUrl = await uploadThumbnailFromFile(projectEditImageFile, projectId);
+				if (cdnUrl) {
+					submissionData.imageUrl = cdnUrl;
+					submissionData.thumbnailUrl = cdnUrl;
+				}
+			} else if (projectEditData.imageUrl && projectEditData.imageUrl !== projectEditTarget.imageUrl) {
+				const cdnUrl = await uploadThumbnailFromUrl(projectEditData.imageUrl, projectId);
+				if (cdnUrl) {
+					submissionData.thumbnailUrl = cdnUrl;
+				}
+			}
+
+			const result = await updateProject(projectEditTarget.id, submissionData);
 			if (!result.success) throw new Error('update failed');
 			if (projectEditNewPw.trim()) {
 				const pwResult = await adminUpdateProjectPassword(projectEditTarget.id, projectEditNewPw.trim());
@@ -549,6 +605,7 @@ const AdminDashboard = ({ projects, onBackToGallery, showToast }) => {
 			setProjectEditTarget(null);
 			setProjectEditData({});
 			setProjectEditNewPw('');
+			clearProjectEditImages();
 		} catch (error) {
 			console.error('Project edit error:', error);
 			showToast('프로젝트 수정에 실패했습니다.', 'error');
@@ -1173,32 +1230,213 @@ const AdminDashboard = ({ projects, onBackToGallery, showToast }) => {
 											className="w-full px-3 py-2 text-xs border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white outline-none focus:border-purple-400 focus:ring-1 focus:ring-purple-400 resize-none"
 										/>
 									</div>
+									{/* 썸네일 이미지 수정 영역 */}
+									<div className="grid grid-cols-1 md:grid-cols-2 gap-4 border border-gray-100 dark:border-gray-800 p-3 rounded-lg bg-gray-50/50 dark:bg-gray-900/30">
+										<div>
+											<label className="block text-xs font-bold text-gray-400 mb-1">썸네일 이미지 URL</label>
+											<input
+												type="text"
+												value={projectEditData.imageUrl || ''}
+												onChange={(e) => setProjectEditData(d => ({ ...d, imageUrl: e.target.value }))}
+												placeholder="https://example.com/image.jpg"
+												className="w-full px-3 py-2 text-xs border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white outline-none focus:border-purple-400 focus:ring-1 focus:ring-purple-400"
+											/>
+											<div className="mt-2">
+												<input
+													ref={fileInputRef}
+													type="file"
+													accept="image/*"
+													onChange={(e) => {
+														const file = e.target.files?.[0];
+														if (!file || !file.type.startsWith('image/')) return;
+														const previewUrl = URL.createObjectURL(file);
+														if (projectEditImagePreview) URL.revokeObjectURL(projectEditImagePreview);
+														setProjectEditImageFile(file);
+														setProjectEditImagePreview(previewUrl);
+													}}
+													className="hidden"
+													id="admin-thumbnail-file-input"
+												/>
+												{projectEditImageFile ? (
+													<div className="flex items-center gap-2 mt-1.5 px-3 py-1.5 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+														<Upload className="w-3.5 h-3.5 text-green-600 flex-shrink-0" />
+														<span className="text-xs text-green-700 dark:text-green-400 font-medium truncate flex-1">{projectEditImageFile.name}</span>
+														<button
+															type="button"
+															onClick={() => {
+																if (projectEditImagePreview) URL.revokeObjectURL(projectEditImagePreview);
+																setProjectEditImageFile(null);
+																setProjectEditImagePreview('');
+																if (fileInputRef.current) fileInputRef.current.value = '';
+															}}
+															className="text-green-500 hover:text-red-500 transition-colors flex-shrink-0"
+														>
+															<X className="w-3.5 h-3.5" />
+														</button>
+													</div>
+												) : (
+													<label
+														htmlFor="admin-thumbnail-file-input"
+														className="mt-1.5 flex items-center justify-center gap-2 w-full py-1.5 border border-dashed border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer hover:border-purple-400 hover:bg-purple-50/50 dark:hover:bg-purple-900/10 transition-colors"
+													>
+														<Upload className="w-3.5 h-3.5 text-gray-400" />
+														<span className="text-xs text-gray-550">또는 파일 직접 업로드</span>
+													</label>
+												)}
+											</div>
+										</div>
+										<div>
+											<label className="block text-xs font-bold text-gray-400 mb-1">썸네일 미리보기</label>
+											{(projectEditImagePreview || projectEditData.imageUrl) ? (
+												<div className="relative rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 aspect-video bg-gray-50 dark:bg-gray-800">
+													<ImageWithLoader
+														src={projectEditImagePreview || projectEditData.imageUrl}
+														alt="Preview"
+														className="w-full h-full"
+														imgClassName="w-full h-full object-cover"
+													/>
+													{projectEditImageFile && (
+														<div className="absolute bottom-1.5 right-1.5 bg-green-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
+															로컬 파일 ✓
+														</div>
+													)}
+												</div>
+											) : (
+												<div className="flex items-center justify-center border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 rounded-lg aspect-video text-xs text-gray-400">
+													미리보기 이미지 없음
+												</div>
+											)}
+										</div>
+									</div>
+
+									{/* 팀원 매핑 수정 영역 */}
 									<div>
 										<label className="block text-xs font-bold text-gray-400 mb-1">팀원 매핑 (수강생 목록)</label>
+										
+										{/* 선택된 팀원 칩 목록 */}
+										{projectEditData.members && projectEditData.members.length > 0 && (
+											<div className="flex flex-wrap gap-1.5 mb-2.5 p-2 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-lg">
+												<div className="w-full text-[10px] font-bold text-purple-500 mb-1">선택된 팀원 ({projectEditData.members.length}명):</div>
+												{projectEditData.members.map(memberName => {
+													const student = students.find(s => s.name === memberName);
+													const displayName = student ? student.name : memberName;
+													const courseName = student ? student.course : "미등록";
+													
+													let colorClass = "bg-gray-100 text-gray-800 border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700";
+													if (student) {
+														if (student.course === "풀스택") {
+															colorClass = "bg-blue-50 text-blue-700 border-blue-150 dark:bg-blue-900/20 dark:text-blue-350 dark:border-blue-800/30";
+														} else if (student.course === "인공지능") {
+															colorClass = "bg-purple-50 text-purple-700 border-purple-150 dark:bg-purple-900/20 dark:text-purple-350 dark:border-purple-800/30";
+														} else if (student.course === "클라우드") {
+															colorClass = "bg-emerald-50 text-emerald-700 border-emerald-150 dark:bg-emerald-900/20 dark:text-emerald-350 dark:border-emerald-800/30";
+														}
+													}
+													return (
+														<span key={memberName} className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full border ${colorClass}`}>
+															{displayName} {!student && `(${courseName})`}
+															<button
+																type="button"
+																onClick={() => {
+																	const nextMembers = projectEditData.members.filter(name => name !== memberName);
+																	setProjectEditData(d => ({ ...d, members: nextMembers }));
+																}}
+																className="hover:text-red-500 transition-colors flex items-center justify-center p-0.5"
+															>
+																<X className="w-2.5 h-2.5" />
+															</button>
+														</span>
+													);
+												})}
+											</div>
+										)}
+
+										{/* 과정 필터 탭 */}
+										<div className="flex gap-1 mb-2 border-b border-gray-200 dark:border-gray-700">
+											{['풀스택', '인공지능', '클라우드'].map(course => (
+												<button
+													key={course}
+													type="button"
+													onClick={() => setMemberCourseTab(course)}
+													className={`px-3 py-1.5 text-xs font-bold border-b-2 transition-all ${
+														memberCourseTab === course
+															? 'border-purple-500 text-purple-600 dark:text-purple-400'
+															: 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+													}`}
+												>
+													{course}
+												</button>
+											))}
+										</div>
+
+										{/* 수강생 검색창 */}
+										<div className="mb-2">
+											<input
+												type="text"
+												value={memberSearchQuery}
+												onChange={(e) => setMemberSearchQuery(e.target.value)}
+												placeholder="이름으로 수강생 검색..."
+												className="w-full px-3 py-1.5 text-xs border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white outline-none focus:border-purple-400 focus:ring-1 focus:ring-purple-400"
+											/>
+										</div>
+
+										{/* 수강생 체크박스 리스트 */}
 										<div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3 bg-gray-50 dark:bg-gray-900 max-h-40 overflow-y-auto grid grid-cols-2 gap-2">
-											{students.map(student => {
-												const isMember = (projectEditData.members || []).includes(student.id);
-												return (
-													<label key={student.id} className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 p-1 rounded transition-colors">
-														<input
-															type="checkbox"
-															checked={isMember}
-															onChange={(e) => {
-																const currentMembers = projectEditData.members || [];
-																let nextMembers;
-																if (e.target.checked) {
-																	nextMembers = [...currentMembers, student.id];
-																} else {
-																	nextMembers = currentMembers.filter(id => id !== student.id);
-																}
-																setProjectEditData(d => ({ ...d, members: nextMembers }));
-															}}
-															className="rounded border-gray-300 text-purple-650 focus:ring-purple-500"
-														/>
-														<span>{student.name} ({student.course})</span>
-													</label>
+											{(() => {
+												const courseStudents = students.filter(s => s.course === memberCourseTab);
+												const searchedStudents = courseStudents.filter(s => 
+													s.name.toLowerCase().includes(memberSearchQuery.toLowerCase())
 												);
-											})}
+												const sortedStudents = [...searchedStudents].sort((a, b) => {
+													const aIsTaken = otherTeamsMembers.has(a.name);
+													const bIsTaken = otherTeamsMembers.has(b.name);
+													if (aIsTaken && !bIsTaken) return 1;
+													if (!aIsTaken && bIsTaken) return -1;
+													return 0;
+												});
+												
+												return sortedStudents.map(student => {
+													const isMember = (projectEditData.members || []).includes(student.name);
+													const isTaken = otherTeamsMembers.has(student.name);
+													return (
+														<label
+															key={student.id}
+															className={`flex items-center gap-2 text-sm p-1.5 rounded transition-all border ${
+																isTaken
+																	? 'bg-gray-100 dark:bg-gray-800/40 text-gray-400 dark:text-gray-600 border-transparent cursor-not-allowed opacity-60'
+																	: isMember
+																		? 'bg-purple-50 dark:bg-purple-950/20 text-purple-700 dark:text-purple-400 font-bold border border-purple-100 dark:border-purple-900/30 cursor-pointer'
+																		: 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 border-transparent cursor-pointer'
+															}`}
+														>
+															<input
+																type="checkbox"
+																checked={isMember}
+																disabled={isTaken}
+																onChange={(e) => {
+																	const currentMembers = projectEditData.members || [];
+																	let nextMembers;
+																	if (e.target.checked) {
+																		nextMembers = [...currentMembers, student.name];
+																	} else {
+																		nextMembers = currentMembers.filter(name => name !== student.name);
+																	}
+																	setProjectEditData(d => ({ ...d, members: nextMembers }));
+																}}
+																className="rounded border-gray-300 text-purple-650 focus:ring-purple-500 disabled:opacity-50"
+															/>
+															<span className="truncate">
+																{student.name}
+																{isTaken && (
+																	<span className="text-[10px] text-gray-400 dark:text-gray-600 ml-1.5 font-normal">
+																		(다른 팀 선택됨)
+																	</span>
+																)}
+															</span>
+														</label>
+													);
+												});
+											})()}
 										</div>
 										<p className="text-[10px] text-gray-400 mt-1">* 지정된 수강생은 ELO 투표 시 본인 프로젝트가 매치업 후보에서 제외됩니다.</p>
 									</div>
@@ -1214,7 +1452,7 @@ const AdminDashboard = ({ projects, onBackToGallery, showToast }) => {
 									</div>
 									<div className="flex justify-end gap-2 pt-1">
 										<button
-											onClick={() => { setProjectEditTarget(null); setProjectEditData({}); setProjectEditNewPw(''); }}
+											onClick={() => { setProjectEditTarget(null); setProjectEditData({}); setProjectEditNewPw(''); clearProjectEditImages(); }}
 											className="flex items-center gap-1 px-3 py-1.5 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 rounded-lg text-xs font-bold hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
 										>
 											<X className="w-3 h-3" /><span>취소</span>

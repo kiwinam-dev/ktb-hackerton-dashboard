@@ -1,21 +1,26 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { X, Loader2, Sparkles, Wand2, Upload, XCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { addProject, updateProject, uploadThumbnailFromUrl, uploadThumbnailFromFile } from '../lib/firebase';
+import { addProject, updateProject, uploadThumbnailFromUrl, uploadThumbnailFromFile, getStudentsByGeneration } from '../lib/firebase';
 import ImageWithLoader from './ImageWithLoader';
 
-const RegisterModal = ({ isOpen, onClose, initialData = null, onSuccess, defaultGeneration = 4, generations = [] }) => {
+const RegisterModal = ({ isOpen, onClose, initialData = null, onSuccess, defaultGeneration = 4, generations = [], projects = [] }) => {
 	const [loading, setLoading] = useState(false);
 	const [fetchingOg, setFetchingOg] = useState(false);
 	const [uploadingThumb, setUploadingThumb] = useState(false);
 	const [imageFile, setImageFile] = useState(null);       // 사용자가 선택한 로컬 파일
 	const [imagePreview, setImagePreview] = useState('');   // 파일 미리보기 URL
 	const fileInputRef = useRef(null);
+
+	const [students, setStudents] = useState([]);
+	const [memberCourseTab, setMemberCourseTab] = useState('풀스택');
+	const [memberSearchQuery, setMemberSearchQuery] = useState('');
+
 	const [formData, setFormData] = useState({
 		title: '',
 		description: '',
 		team: '',
-		members: '',
+		members: [],
 		url: '',
 		imageUrl: '',
 		password: '',
@@ -23,6 +28,18 @@ const RegisterModal = ({ isOpen, onClose, initialData = null, onSuccess, default
 		generation: defaultGeneration
 	});
 	const [tagInput, setTagInput] = useState('');
+
+	const otherTeamsMembers = useMemo(() => {
+		const set = new Set();
+		projects
+			.filter(p => (p.generation || 3) === Number(formData.generation) && p.id !== initialData?.id)
+			.forEach(p => {
+				if (p.members) {
+					p.members.forEach(name => set.add(name));
+				}
+			});
+		return set;
+	}, [projects, formData.generation, initialData]);
 
 	// Reset or populate form when opening/closing
 	useEffect(() => {
@@ -33,7 +50,7 @@ const RegisterModal = ({ isOpen, onClose, initialData = null, onSuccess, default
 					title: initialData.title || '',
 					description: initialData.description || '',
 					team: initialData.team || '',
-					members: initialData.members ? initialData.members.join(', ') : '',
+					members: initialData.members || [],
 					url: initialData.url || '',
 					imageUrl: initialData.imageUrl || '',
 					password: initialData.password || '',
@@ -45,7 +62,7 @@ const RegisterModal = ({ isOpen, onClose, initialData = null, onSuccess, default
 					title: '',
 					description: '',
 					team: '',
-					members: '',
+					members: [],
 					url: '',
 					imageUrl: '',
 					password: '',
@@ -63,6 +80,18 @@ const RegisterModal = ({ isOpen, onClose, initialData = null, onSuccess, default
 			document.body.style.overflow = 'unset';
 		};
 	}, [isOpen, initialData, defaultGeneration]);
+
+	// Fetch students for the selected generation dynamically
+	useEffect(() => {
+		if (isOpen) {
+			const fetchStudents = async () => {
+				const list = await getStudentsByGeneration(formData.generation);
+				setStudents(list);
+			};
+			fetchStudents();
+			setMemberSearchQuery('');
+		}
+	}, [isOpen, formData.generation]);
 
 	const handleChange = (e) => {
 		setFormData({
@@ -147,7 +176,7 @@ const RegisterModal = ({ isOpen, onClose, initialData = null, onSuccess, default
 		const submissionData = {
 			...formData,
 			generation: Number(formData.generation),
-			members: formData.members.split(',').map(m => m.trim()).filter(Boolean)
+			members: formData.members
 		};
 
 		const projectId = initialData?.id || `proj_${Date.now()}`;
@@ -278,18 +307,136 @@ const RegisterModal = ({ isOpen, onClose, initialData = null, onSuccess, default
 									</div>
 
 									<div>
-										<label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-											팀원 이름 (콤마로 구분) *
+										<label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+											팀원 매핑 (수강생 목록) *
 										</label>
-										<input
-											type="text"
-											name="members"
-											required
-											value={formData.members}
-											onChange={handleChange}
-											className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-kakao-yellow focus:border-transparent outline-none transition-all bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-											placeholder="김철수, 이영희, 박지성"
-										/>
+										
+										{/* 선택된 팀원 칩 목록 */}
+										{formData.members && formData.members.length > 0 && (
+											<div className="flex flex-wrap gap-1.5 mb-3 p-2.5 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-lg">
+												<div className="w-full text-[10px] font-bold text-yellow-500 mb-1">선택된 팀원 ({formData.members.length}명):</div>
+												{formData.members.map(memberName => {
+													const student = students.find(s => s.name === memberName);
+													const displayName = student ? student.name : memberName;
+													const courseName = student ? student.course : "미등록";
+													
+													let colorClass = "bg-gray-100 text-gray-800 border-gray-200 dark:bg-gray-850 dark:text-gray-300 dark:border-gray-700";
+													if (student) {
+														if (student.course === "풀스택") {
+															colorClass = "bg-blue-50 text-blue-700 border-blue-150 dark:bg-blue-900/20 dark:text-blue-350 dark:border-blue-800/30";
+														} else if (student.course === "인공지능") {
+															colorClass = "bg-purple-50 text-purple-700 border-purple-150 dark:bg-purple-900/20 dark:text-purple-350 dark:border-purple-800/30";
+														} else if (student.course === "클라우드") {
+															colorClass = "bg-emerald-50 text-emerald-700 border-emerald-150 dark:bg-emerald-900/20 dark:text-emerald-350 dark:border-emerald-800/30";
+														}
+													}
+													return (
+														<span key={memberName} className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full border ${colorClass}`}>
+															{displayName} {!student && `(${courseName})`}
+															<button
+																type="button"
+																onClick={() => {
+																	const nextMembers = formData.members.filter(name => name !== memberName);
+																	setFormData(d => ({ ...d, members: nextMembers }));
+																}}
+																className="hover:text-red-500 transition-colors flex items-center justify-center p-0.5"
+															>
+																<X className="w-2.5 h-2.5" />
+															</button>
+														</span>
+													);
+												})}
+											</div>
+										)}
+
+										{/* 과정 필터 탭 */}
+										<div className="flex gap-1 mb-2 border-b border-gray-200 dark:border-gray-700">
+											{['풀스택', '인공지능', '클라우드'].map(course => (
+												<button
+													key={course}
+													type="button"
+													onClick={() => setMemberCourseTab(course)}
+													className={`px-3 py-1.5 text-xs font-bold border-b-2 transition-all ${
+														memberCourseTab === course
+															? 'border-yellow-500 text-yellow-600 dark:text-yellow-400'
+															: 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+													}`}
+												>
+													{course}
+												</button>
+											))}
+										</div>
+
+										{/* 수강생 검색창 */}
+										<div className="mb-2">
+											<input
+												type="text"
+												value={memberSearchQuery}
+												onChange={(e) => setMemberSearchQuery(e.target.value)}
+												placeholder="이름으로 수강생 검색..."
+												className="w-full px-3 py-1.5 text-xs border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white outline-none focus:border-yellow-400 focus:ring-1 focus:ring-yellow-400"
+											/>
+										</div>
+
+										{/* 수강생 체크박스 리스트 */}
+										<div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3 bg-gray-50 dark:bg-gray-900 max-h-40 overflow-y-auto grid grid-cols-2 gap-2">
+											{(() => {
+												const courseStudents = students.filter(s => s.course === memberCourseTab);
+												const searchedStudents = courseStudents.filter(s => 
+													s.name.toLowerCase().includes(memberSearchQuery.toLowerCase())
+												);
+												const sortedStudents = [...searchedStudents].sort((a, b) => {
+													const aIsTaken = otherTeamsMembers.has(a.name);
+													const bIsTaken = otherTeamsMembers.has(b.name);
+													if (aIsTaken && !bIsTaken) return 1;
+													if (!aIsTaken && bIsTaken) return -1;
+													return 0;
+												});
+												
+												return sortedStudents.map(student => {
+													const isMember = (formData.members || []).includes(student.name);
+													const isTaken = otherTeamsMembers.has(student.name);
+													return (
+														<label
+															key={student.id}
+															className={`flex items-center gap-2 text-sm p-1.5 rounded transition-all border ${
+																isTaken
+																	? 'bg-gray-100 dark:bg-gray-800/40 text-gray-400 dark:text-gray-600 border-transparent cursor-not-allowed opacity-60'
+																	: isMember
+																		? 'bg-yellow-50 dark:bg-yellow-950/20 text-yellow-700 dark:text-yellow-400 font-bold border border-yellow-100 dark:border-yellow-900/30 cursor-pointer'
+																		: 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 border-transparent cursor-pointer'
+															}`}
+														>
+															<input
+																type="checkbox"
+																checked={isMember}
+																disabled={isTaken}
+																onChange={(e) => {
+																	const currentMembers = formData.members || [];
+																	let nextMembers;
+																	if (e.target.checked) {
+																		nextMembers = [...currentMembers, student.name];
+																	} else {
+																		nextMembers = currentMembers.filter(name => name !== student.name);
+																	}
+																	setFormData(d => ({ ...d, members: nextMembers }));
+																}}
+																className="rounded border-gray-300 text-yellow-650 focus:ring-yellow-500 disabled:opacity-50"
+															/>
+															<span className="truncate">
+																{student.name}
+																{isTaken && (
+																	<span className="text-[10px] text-gray-450 dark:text-gray-600 ml-1.5 font-normal">
+																		(다른 팀 선택됨)
+																	</span>
+																)}
+															</span>
+														</label>
+													);
+												});
+											})()}
+										</div>
+										<p className="text-[10px] text-gray-400 mt-1">* 지정된 수강생은 ELO 투표 시 본인 프로젝트가 매치업 후보에서 제외됩니다.</p>
 									</div>
 
 									<div>
